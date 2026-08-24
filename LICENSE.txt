@@ -1,0 +1,67 @@
+MotionKit Connector — Proprietary Software License Agreement
+=============================================================
+
+Copyright (c) 2024-2026 Wealcoder / MotionKit. All rights reserved.
+
+This software and its source code (the "Software") are the confidential and
+proprietary property of Wealcoder ("Licensor"). The Software is licensed, not
+sold. Your use of the Software is governed by this Agreement and by the
+MotionKit Terms of Service at https://motionkit.io/terms.
+
+1. GRANT OF LICENSE
+   Subject to an active, paid MotionKit subscription and continued compliance
+   with this Agreement, Licensor grants you a limited, non-exclusive,
+   non-transferable, revocable license to install and use the Software on
+   websites that you own or operate, solely for their intended purpose as a
+   connector to the MotionKit service. This license terminates automatically
+   if your subscription lapses or if you breach any term below.
+
+2. RESTRICTIONS
+   You may NOT, in whole or in part, directly or indirectly:
+   (a) copy, reproduce, republish, upload, post, or distribute the Software;
+   (b) sell, resell, rent, lease, sublicense, or otherwise transfer it;
+   (c) modify, adapt, translate, or create derivative works from it;
+   (d) decompile, disassemble, reverse engineer, or attempt to derive the
+       source, structure, algorithms, or ideas of the Software, except to the
+       limited extent such restriction is prohibited by applicable law;
+   (e) remove, obscure, or alter any copyright, trademark, or proprietary
+       notice contained in the Software;
+   (f) use the Software to build, train, or improve any competing product; or
+   (g) submit any part of the Software to an automated system — including
+       artificial intelligence or machine-learning models — for the purpose of
+       reproducing, summarizing for reproduction, or reverse engineering its
+       functionality.
+
+3. OWNERSHIP
+   The Software is protected by copyright and other intellectual property laws
+   and international treaties. Licensor retains all right, title, and interest,
+   including all intellectual property rights, in and to the Software. No rights
+   are granted except as expressly set forth in this Agreement.
+
+4. THIRD-PARTY COMPONENTS
+   The Software bundles GreenSock Animation Platform (GSAP) under GreenSock's
+   "no charge" / commercial license terms. GSAP remains the property of its
+   respective owners and is used in accordance with its own license. This
+   proprietary license applies only to MotionKit's own original code, not to
+   such third-party components.
+
+5. TERMINATION
+   This license terminates immediately, without notice, if you violate any term.
+   On termination you must cease all use and delete all copies of the Software.
+
+6. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+7. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM
+   OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+8. ENFORCEMENT
+   Unauthorized use, copying, or distribution of the Software may result in
+   civil and criminal penalties and will be prosecuted to the maximum extent
+   possible under the law.
+
+Report license abuse or request commercial terms: legal@motionkit.io

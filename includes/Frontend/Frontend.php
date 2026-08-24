@@ -1,0 +1,1246 @@
+<?php
+
+/**
+ * MotionKit Connector — Proprietary. Copyright (c) 2024-2026 Wealcoder / MotionKit.
+ * All rights reserved. Licensed, not sold. Unauthorized copying, modification,
+ * distribution, reverse engineering, or AI-assisted reproduction is prohibited.
+ * See LICENSE.txt. Abuse: legal@motionkit.io
+ */
+
+namespace MotionKitConnector\Frontend;
+
+/**
+ * Frontend Class for MotionKit Extension
+ *
+ * @package MotionKitConnector
+ * @since 1.0.0
+ */
+
+// Prevent direct access
+if (!defined('ABSPATH')) {
+  exit;
+}
+
+use MotionKitConnector\Common\Assets\AssetLoader;
+use MotionKitConnector\Common\MotionkitBuilderPageType;
+use MotionKitConnector\Auth\JwtTokenManager;
+use MotionKitConnector\Factory\ComponentFactory;
+use MotionKitConnector\Support\EditorSessionTrait;
+
+/**
+ * Frontend Class
+ *
+ * Handles frontend animation execution, script loading, GSAP enqueues,
+ * ScrollSmoother, Page Transitions, Preloader Engine, and AJAX config endpoints.
+ */
+final class Frontend
+{
+  use EditorSessionTrait;
+
+  /**
+   * Maps get_active_plugins()'s animation-schema keys to their registered WP script handle.
+   *
+   * @var array<string,string>
+   */
+  private const GSAP_SCHEMA_TO_HANDLE = [
+    'scrollTo'   => 'ScrollToPlugin',
+    'drawSVG'    => 'DrawSVGPlugin',
+    'morphSVG'   => 'MorphSVGPlugin',
+    'motionPath' => 'MotionPathPlugin',
+    'splitText'  => 'SplitText',
+  ];
+
+  /**
+   * Asset loader instance
+   *
+   * @var AssetLoader
+   */
+  private AssetLoader $asset_loader;
+
+  /**
+   * Page type resolver
+   *
+   * @var MotionkitBuilderPageType
+   */
+  private MotionkitBuilderPageType $page_type;
+
+  /**
+   * ScrollSmoother manager
+   *
+   * @var ScrollSmoother
+   */
+  private ScrollSmoother $smoother;
+
+  /**
+   * Per-request memo for page-transition option.
+   *
+   * @var array|null|false
+   */
+  private $page_transition_cache = false;
+
+  /**
+   * Per-request memo for resolved preloader config.
+   *
+   * @var array|null|false
+   */
+  private $preloader_cache = false;
+
+  /**
+   * Per-request memo for global settings.
+   *
+   * @var array|object|false
+   */
+  private $global_settings_cache = false;
+
+  /**
+   * Per-request memo for global animations.
+   *
+   * @var array|false
+   */
+  private $global_animations_cache = false;
+
+  /**
+   * GSAP handles that actually registered this request.
+   *
+   * @var array<string,bool>
+   */
+  private array $registered_gsap_handles = [];
+
+  /**
+   * Optional GSAP plugin handles requested by config but NOT registered.
+   *
+   * @var array<string,bool>
+   */
+  private array $unavailable_gsap_handles = [];
+
+  /**
+   * Initialize frontend functionality
+   *
+   * @return void
+   */
+  public function init(): void
+  {
+    $this->asset_loader = ComponentFactory::create_asset_loader();
+    $this->page_type = MotionkitBuilderPageType::instance();
+    $this->smoother = new ScrollSmoother();
+
+    $this->init_hooks();
+  }
+
+  /**
+   * Initialize hooks
+   *
+   * @return void
+   */
+  private function init_hooks(): void
+  {
+    // Allow the editor iframe to embed this site
+    add_action('send_headers', [$this, 'allow_editor_iframe']);
+
+    // Never let a page cache serve a stale motionkitData snapshot into the
+    // editor iframe (LiteSpeed / WP Rocket / Cloudflare APO) — animations
+    // would appear unchanged after a save + reload.
+    add_action('send_headers', [$this, 'no_store_for_editor_preview']);
+
+    // Register GSAP CDN scripts via core deps filter
+    add_filter('motionkit_core_lib_deps', [$this, 'register_required_script']);
+    add_filter('motionkit_extension_core_lib_deps', [$this, 'register_required_script']);
+
+    // Stand-down signal for third-party smoothers
+    add_filter('bricksfly_smooth_scroller_is_active', [$this, 'veto_third_party_smoother']);
+
+    // Frontend script enqueue & head output — only on actual page loads
+    if (!is_admin()) {
+      add_action('wp_head', ['\\MotionKitConnector\\Frontend\\PageTransition', 'print_head_early_cover'], 0);
+      add_action('wp_enqueue_scripts', [$this, 'enqueue_page_transition'], 2);
+      add_action('wp_enqueue_scripts', [$this, 'enqueue_preloader'], 5);
+      add_action('wp_head', [$this, 'print_preloader_cover'], 0);
+      add_action('wp_head', [$this, 'print_gsap_preload'], 1);
+      add_action('wp_enqueue_scripts', [$this, 'maybe_init_scroll_smoother'], 50);
+      add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend_scripts'], 60);
+    }
+
+    // AJAX handlers
+    add_action('wp_ajax_motionkit_builder_pagetype_configs', [$this, 'ajax_configs_store']);
+    add_action('wp_ajax_motionkit_configs_delete', [$this, 'ajax_configs_delete']);
+    add_action('wp_ajax_motionkit_builder_gl_configs_store', [$this, 'ajax_global_configs_store']);
+    add_action('wp_ajax_motionkit_gl_configs_delete', [$this, 'ajax_global_configs_delete']);
+
+    do_action('motionkit_extension/frontend/init', $this);
+  }
+
+  /**
+   * Read motionkit_global_settings, memoized per request.
+   *
+   * @return array|object
+   */
+  private function get_global_settings()
+  {
+    if ($this->global_settings_cache !== false) {
+      return $this->global_settings_cache;
+    }
+    return $this->global_settings_cache = get_option('motionkit_global_settings', []);
+  }
+
+  /**
+   * Read motionkit_global_animations, memoized per request.
+   *
+   * @return array
+   */
+  private function get_global_animations(): array
+  {
+    if ($this->global_animations_cache !== false) {
+      return $this->global_animations_cache;
+    }
+    $raw = get_option('motionkit_global_animations', []);
+    return $this->global_animations_cache = is_array($raw) ? $raw : [];
+  }
+
+  /**
+   * Read + validate the page-transition snippet, memoized per request.
+   *
+   * @return array|null Validated stored payload, or null when no snippet is configured.
+   */
+  public function get_page_transition()
+  {
+    if ($this->page_transition_cache !== false) {
+      return $this->page_transition_cache;
+    }
+
+    $stored = get_option('motionkit-page-transition-code');
+    if (is_array($stored) && !empty($stored['code']) && is_string($stored['code']) && strlen(trim($stored['code'])) > 50) {
+      return $this->page_transition_cache = $stored;
+    }
+
+    if (PageTransition::is_enabled()) {
+      $code = PageTransition::generate_runtime_script();
+      if (!empty($code)) {
+        return $this->page_transition_cache = [
+          'code'        => $code,
+          'presetKey'   => 'curtain',
+          'presetLabel' => 'Curtain',
+        ];
+      }
+    }
+
+    return $this->page_transition_cache = null;
+  }
+
+  /**
+   * Resolve the active preloader config, memoized per request.
+   *
+   * @return array|null Config array when enabled, null otherwise.
+   */
+  public function get_preloader()
+  {
+    if ($this->preloader_cache !== false) {
+      return $this->preloader_cache;
+    }
+
+    $settings = $this->get_global_settings();
+    if (is_object($settings)) {
+      $settings = (array) $settings;
+    }
+    if (!is_array($settings) || !isset($settings['preloader'])) {
+      return $this->preloader_cache = null;
+    }
+
+    $preloader = $settings['preloader'];
+    if (is_object($preloader)) {
+      $preloader = (array) $preloader;
+    }
+    if (!is_array($preloader) || empty($preloader['enable'])) {
+      return $this->preloader_cache = null;
+    }
+
+    return $this->preloader_cache = $preloader;
+  }
+
+  /**
+   * Plugin-relative path of the engine bundle for the selected preloader, or null.
+   *
+   * @param array $preloader
+   * @return string|null
+   */
+  private function preloader_bundle(array $preloader): ?string
+  {
+    $dir = 'assets/build/modules/animation-builder/frontend/preloader/';
+
+    $is_custom = isset($preloader['tabs']) && $preloader['tabs'] === 'custom';
+    if ($is_custom) {
+      $key = 'custom';
+    } else {
+      $base = $this->preloader_base($preloader);
+      $key = isset($base['preloaderType']) && is_string($base['preloaderType'])
+        ? $base['preloaderType']
+        : 'spinner';
+    }
+
+    if (!preg_match('/^[A-Za-z0-9_-]{1,40}$/', $key)) {
+      $key = 'spinner';
+    }
+
+    if (file_exists(MOTIONKIT_EXTENSION_PLUGIN_DIR . $dir . $key . '.js')) {
+      return $dir . $key . '.js';
+    }
+    if (file_exists(MOTIONKIT_EXTENSION_PLUGIN_DIR . $dir . 'spinner.js')) {
+      return $dir . 'spinner.js';
+    }
+
+    return null;
+  }
+
+  private function preloader_base(array $preloader): array
+  {
+    $mode = (isset($preloader['tabs']) && $preloader['tabs'] === 'custom')
+      ? 'custom'
+      : 'preset';
+    $base = isset($preloader[$mode]) ? $preloader[$mode] : [];
+    if (is_object($base)) {
+      $base = (array) $base;
+    }
+    return is_array($base) ? $base : [];
+  }
+
+  /**
+   * Paint the preloader cover before anything else renders.
+   *
+   * @return void
+   */
+  public function print_preloader_cover(): void
+  {
+    if ($this->is_editor_preview() || $this->is_full_preview()) {
+      return;
+    }
+
+    $preloader = $this->get_preloader();
+    if ($preloader === null) {
+      return;
+    }
+
+    if ($this->preloader_bundle($preloader) === null) {
+      return;
+    }
+
+    $base = $this->preloader_base($preloader);
+
+    $background = isset($base['background']) && is_string($base['background'])
+      ? $base['background']
+      : '#0a0a0a';
+    if (!preg_match('/^#[0-9a-fA-F]{3,8}$|^rgba?\([0-9,.\s%]+\)$/', $background)) {
+      $background = '#0a0a0a';
+    }
+
+    $max = isset($base['maxDuration']) ? (float) $base['maxDuration'] : 8.0;
+    if ($max < 1) {
+      $max = 1.0;
+    }
+    if ($max > 60) {
+      $max = 60.0;
+    }
+
+    $opacity = isset($base['overlayOpacity']) ? (float) $base['overlayOpacity'] : 1.0;
+    $mask_body = $opacity >= 1;
+
+    $css = sprintf(
+      'html.motionkit-preloading{background:%s!important;animation:mk-pl-failsafe-html .01s linear %ss forwards}',
+      $background,
+      $max
+    );
+    if ($mask_body) {
+      $css .= sprintf(
+        'html.motionkit-preloading body{visibility:hidden;animation:mk-pl-failsafe-body .01s linear %ss forwards}',
+        $max
+      );
+    }
+    $css .= '@keyframes mk-pl-failsafe-html{to{background:transparent!important}}';
+    $css .= '@keyframes mk-pl-failsafe-body{to{visibility:visible}}';
+
+    printf(
+      "\n<style id='motionkit-preloader-cover-style'>%s</style>\n",
+      $css
+    );
+
+    wp_print_inline_script_tag(
+      "document.documentElement.className+=' motionkit-preloading';",
+      ['id' => 'motionkit-preloader-cover']
+    );
+  }
+
+  /**
+   * Enqueue the preloader engine into <head>, with its config inlined before it.
+   *
+   * @return void
+   */
+  public function enqueue_preloader(): void
+  {
+    if ($this->is_editor_preview() || $this->is_full_preview()) {
+      return;
+    }
+
+    $preloader = $this->get_preloader();
+    if ($preloader === null) {
+      return;
+    }
+
+    $bundle = $this->preloader_bundle($preloader);
+    if ($bundle === null) {
+      return;
+    }
+
+    wp_enqueue_script(
+      'motionkit-preloader',
+      MOTIONKIT_EXTENSION_PLUGIN_URL . $bundle,
+      [],
+      MOTIONKIT_EXTENSION_VERSION,
+      false
+    );
+
+    wp_add_inline_script(
+      'motionkit-preloader',
+      'window.__MOTIONKIT_PRELOADER__=' . wp_json_encode($preloader) . ';',
+      'before'
+    );
+  }
+
+  /**
+   * Switch off third-party smoothers when MotionKit Extension owns it.
+   *
+   * @param mixed $active
+   * @return bool
+   */
+  public function veto_third_party_smoother($active): bool
+  {
+    return ScrollSmoother::should_run() ? false : (bool) $active;
+  }
+
+  /**
+   * Hook ScrollSmoother runtime in wp_footer if active
+   *
+   * @return void
+   */
+  public function maybe_init_scroll_smoother(): void
+  {
+    if (!ScrollSmoother::should_run()) {
+      return;
+    }
+
+    add_action('wp_footer', [$this->smoother, 'run_scroll_smoother']);
+  }
+
+  /**
+   * Preload GSAP for smooth page transition execution
+   *
+   * @return void
+   */
+  /**
+   * Preload GSAP for smooth page transition execution
+   *
+   * @return void
+   */
+  public function print_gsap_preload(): void
+  {
+    if ($this->is_editor_preview() || $this->is_full_preview()) {
+      return;
+    }
+
+    if ($this->get_page_transition() === null) {
+      return;
+    }
+
+    $gsap_src = wp_scripts()->registered['gsap']->src ?? '';
+    if ($gsap_src === '') {
+      return;
+    }
+
+    $host = wp_parse_url($gsap_src, PHP_URL_HOST);
+    $site_host = wp_parse_url(home_url(), PHP_URL_HOST);
+
+    // If external CDN is used, output DNS prefetch and preconnect
+    if (!empty($host) && $host !== $site_host) {
+      $origin = 'https://' . $host;
+      printf("<link rel='dns-prefetch' href='%s'>\n", esc_url($origin));
+      printf("<link rel='preconnect' href='%s' crossorigin>\n", esc_url($origin));
+    }
+  }
+
+  /**
+   * Enqueue GSAP and Page Transition runtime in <head>
+   *
+   * @return void
+   */
+  public function enqueue_page_transition(): void
+  {
+    if ($this->is_editor_preview() || $this->is_full_preview()) {
+      return;
+    }
+
+    if (PageTransition::is_enabled() || $this->get_page_transition() !== null) {
+      $this->register_required_script([]);
+      wp_enqueue_script('gsap');
+
+      $stored = $this->get_page_transition();
+      if (is_array($stored) && !empty($stored['code'])) {
+        $code = (string) apply_filters('motionkit/page_transition/code', $stored['code'], $stored);
+        if ('' !== trim($code)) {
+          wp_add_inline_script('gsap', $code, 'after');
+        }
+      }
+    }
+  }
+
+  /**
+   * Print page transition inline script in wp_footer
+   *
+   * @return void
+   */
+  public function print_page_transition_code(): void
+  {
+    if ($this->is_editor_preview() || $this->is_full_preview()) {
+      return;
+    }
+
+    $stored = $this->get_page_transition();
+    if ($stored === null) {
+      return;
+    }
+
+    $code = (string) apply_filters(
+      'motionkit/page_transition/code',
+      $stored['code'],
+      $stored
+    );
+
+    if ('' === trim($code)) {
+      return;
+    }
+
+    $label = isset($stored['presetLabel']) ? (string) $stored['presetLabel'] : '';
+    $key   = isset($stored['presetKey']) ? (string) $stored['presetKey'] : '';
+    $tag   = trim($label . ('' !== $key ? " ({$key})" : ''));
+    if ('' === $tag) {
+      $tag = 'custom';
+    }
+
+    printf(
+      "\n<!-- MotionKit Page Transition: %s -->\n",
+      esc_html($tag)
+    );
+
+    wp_print_inline_script_tag(
+      $code,
+      ['id' => 'motionkit-page-transition-code']
+    );
+  }
+
+  /**
+   * Register GSAP CDN libraries and premium plugins configured in settings.
+   *
+   * @param array $deps Existing deps from filter
+   * @return array Merged dependency handles
+   */
+  public function register_required_script(array $deps = []): array
+  {
+    $this->registered_gsap_handles = [];
+    $this->unavailable_gsap_handles = [];
+
+    $global = $this->get_global_settings();
+    $gsap_plugin = null;
+    if (is_object($global) && isset($global->gsapPlugin)) {
+      $gsap_plugin = $global->gsapPlugin;
+    } elseif (is_array($global) && isset($global['gsapPlugin'])) {
+      $gsap_plugin = $global['gsapPlugin'];
+    }
+    $gsap_plugin = is_array($gsap_plugin) ? $gsap_plugin : (is_object($gsap_plugin) ? (array) $gsap_plugin : []);
+    $cdns = isset($gsap_plugin['cdns']) ? (array) $gsap_plugin['cdns'] : [];
+
+    $local_vendor_files = [
+      // Core & Scrolling
+      'gsap'                => 'assets/vendor/gsap/gsap.min.js',
+      'ScrollTrigger'       => 'assets/vendor/gsap/ScrollTrigger.min.js',
+      'ScrollSmoother'      => 'assets/vendor/gsap/ScrollSmoother.min.js',
+      'scrollSmoother'      => 'assets/vendor/gsap/ScrollSmoother.min.js',
+      'ScrollToPlugin'      => 'assets/vendor/gsap/ScrollToPlugin.min.js',
+      'Observer'            => 'assets/vendor/gsap/Observer.min.js',
+
+      // Text & Typography
+      'SplitText'           => 'assets/vendor/gsap/SplitText.min.js',
+      'TextPlugin'          => 'assets/vendor/gsap/TextPlugin.min.js',
+      'text'                => 'assets/vendor/gsap/TextPlugin.min.js',
+      'ScrambleTextPlugin'  => 'assets/vendor/gsap/ScrambleTextPlugin.min.js',
+      'scrambleText'        => 'assets/vendor/gsap/ScrambleTextPlugin.min.js',
+
+      // SVG & Morphing
+      'DrawSVGPlugin'       => 'assets/vendor/gsap/DrawSVGPlugin.min.js',
+      'drawSVG'             => 'assets/vendor/gsap/DrawSVGPlugin.min.js',
+      'MorphSVGPlugin'      => 'assets/vendor/gsap/MorphSVGPlugin.min.js',
+      'morphSVG'            => 'assets/vendor/gsap/MorphSVGPlugin.min.js',
+      'MotionPathPlugin'    => 'assets/vendor/gsap/MotionPathPlugin.min.js',
+      'motionPath'          => 'assets/vendor/gsap/MotionPathPlugin.min.js',
+
+      // UI & Layout
+      'Flip'                => 'assets/vendor/gsap/Flip.min.js',
+      'flip'                => 'assets/vendor/gsap/Flip.min.js',
+      'Draggable'           => 'assets/vendor/gsap/Draggable.min.js',
+      'draggable'           => 'assets/vendor/gsap/Draggable.min.js',
+      'InertiaPlugin'       => 'assets/vendor/gsap/InertiaPlugin.min.js',
+      'inertia'             => 'assets/vendor/gsap/InertiaPlugin.min.js',
+
+      // Physics & Simulation
+      'Physics2DPlugin'     => 'assets/vendor/gsap/Physics2DPlugin.min.js',
+      'physics2D'           => 'assets/vendor/gsap/Physics2DPlugin.min.js',
+      'PhysicsPropsPlugin'  => 'assets/vendor/gsap/PhysicsPropsPlugin.min.js',
+      'physicsProps'        => 'assets/vendor/gsap/PhysicsPropsPlugin.min.js',
+
+      // Custom Eases
+      'CustomEase'          => 'assets/vendor/gsap/CustomEase.min.js',
+      'customEase'          => 'assets/vendor/gsap/CustomEase.min.js',
+      'CustomWiggle'        => 'assets/vendor/gsap/CustomWiggle.min.js',
+      'customWiggle'        => 'assets/vendor/gsap/CustomWiggle.min.js',
+      'CustomBounce'        => 'assets/vendor/gsap/CustomBounce.min.js',
+      'customBounce'        => 'assets/vendor/gsap/CustomBounce.min.js',
+      'EasePack'            => 'assets/vendor/gsap/EasePack.min.js',
+
+      // Canvas / WebGL / CSS Helpers
+      'PixiPlugin'          => 'assets/vendor/gsap/PixiPlugin.min.js',
+      'EaselPlugin'         => 'assets/vendor/gsap/EaselPlugin.min.js',
+      'CSSRulePlugin'       => 'assets/vendor/gsap/CSSRulePlugin.min.js',
+    ];
+
+    // Bundle GSAP locally only. wordpress.org forbids loading executable JS
+    // from a remote CDN, and a CDN fallback is also a supply-chain risk (CDN
+    // compromise → arbitrary JS on every page). A handle whose local file is
+    // missing is simply not registered rather than sourced remotely.
+    $default_cdns = [];
+    foreach ($local_vendor_files as $name => $rel_path) {
+      if (!file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . $rel_path)) {
+        continue;
+      }
+      $default_cdns[$name] = [
+        'url'     => MOTIONKIT_CONNECTOR_PLUGIN_URL . $rel_path,
+        'deps'    => $name === 'gsap' ? [] : ['gsap'],
+        'version' => '3.15',
+      ];
+    }
+    if (isset($default_cdns['ScrollSmoother'])) {
+      $default_cdns['ScrollSmoother']['deps'] = ['gsap', 'ScrollTrigger'];
+    }
+
+    if (empty($cdns)) {
+      $cdns = $default_cdns;
+    } else {
+      $cdns = array_merge($default_cdns, $cdns);
+    }
+
+    $always = [
+      'gsap'           => true,
+      'ScrollTrigger'  => true,
+      'ScrollSmoother' => true,
+      'scrollSmoother' => true,
+    ];
+
+    foreach ($cdns as $handle => $entry) {
+      $handle = (string) $handle;
+      $is_optional = !isset($always[$handle]);
+
+      if (is_string($entry)) {
+        $entry = ['url' => $entry];
+      } else {
+        $entry = (array) $entry;
+      }
+
+      // If user's stored CDN is an external jsdelivr default or empty, override with local file
+      if (isset($local_vendor_files[$handle])) {
+        $local_rel = $local_vendor_files[$handle];
+        if (file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . $local_rel)) {
+          $current_url = $entry['url'] ?? '';
+          if (empty($current_url) || strpos($current_url, 'cdn.jsdelivr.net/npm/gsap') !== false) {
+            $entry['url'] = MOTIONKIT_CONNECTOR_PLUGIN_URL . $local_rel;
+          }
+        }
+      }
+
+      if ($is_optional) {
+        $enabled = isset($gsap_plugin[$handle]) && filter_var($gsap_plugin[$handle], FILTER_VALIDATE_BOOLEAN);
+        if (!$enabled && !isset($default_cdns[$handle])) {
+          $this->unavailable_gsap_handles[$handle] = true;
+          continue;
+        }
+      }
+
+      $url = isset($entry['url']) && is_string($entry['url']) ? trim($entry['url']) : '';
+
+      if ($url === '' || wp_http_validate_url($url) === false) {
+        if ($is_optional) {
+          $this->unavailable_gsap_handles[$handle] = true;
+        }
+        continue;
+      }
+
+      // Only allow scripts served from this plugin's own URL. A stored/filtered
+      // CDN entry pointing off-site would reintroduce remote executable code
+      // (wordpress.org blocker + supply-chain risk).
+      if (strpos($url, MOTIONKIT_CONNECTOR_PLUGIN_URL) !== 0) {
+        if ($is_optional) {
+          $this->unavailable_gsap_handles[$handle] = true;
+        }
+        continue;
+      }
+
+      if ($handle === 'gsap') {
+        $handle_deps = [];
+      } else {
+        $handle_deps = isset($entry['deps']) && is_array($entry['deps'])
+          ? array_values(array_filter(array_map(
+            static function ($dep) {
+              $dep = is_string($dep) ? preg_replace('/[^A-Za-z0-9_-]/', '', $dep) : '';
+              return $dep !== '' ? $dep : null;
+            },
+            $entry['deps']
+          )))
+          : ['gsap'];
+      }
+
+      $version = isset($entry['version']) && is_string($entry['version']) && $entry['version'] !== ''
+        ? sanitize_text_field($entry['version'])
+        : null;
+
+      if ($handle === 'gsap') {
+        $is_pt_active = PageTransition::is_enabled() || ($this->get_page_transition() !== null);
+        $in_footer    = !$is_pt_active; // If page transition is active -> load in <head> (false); otherwise -> load in footer (true)
+
+        wp_register_script($handle, $url, $handle_deps, $version, $in_footer);
+        $this->registered_gsap_handles[$handle] = true;
+
+        if ($is_pt_active) {
+          wp_enqueue_script($handle);
+        }
+        continue;
+      }
+
+      wp_register_script($handle, $url, $handle_deps, $version, true);
+      $this->registered_gsap_handles[$handle] = true;
+    }
+
+    $core_deps = [];
+    if (isset($this->registered_gsap_handles['gsap'])) {
+      $core_deps[] = 'gsap';
+    }
+    foreach (['ScrollSmoother', 'scrollSmoother'] as $smoother_handle) {
+      if (isset($this->registered_gsap_handles[$smoother_handle])) {
+        $core_deps[] = $smoother_handle;
+        break;
+      }
+    }
+
+    return array_values(array_unique(array_merge($deps, $core_deps)));
+  }
+
+  /**
+   * Conditionally enqueue frontend animation scripts
+   *
+   * @return void
+   */
+  public function enqueue_frontend_scripts(): void
+  {
+    if ($this->is_editor_preview()) {
+      $this->enqueue_editor_preview_scripts();
+      return;
+    }
+
+    $page_configs = $this->page_type->getConfig();
+    if (!is_array($page_configs)) {
+      $page_configs = [];
+    }
+
+    $is_custom = false;
+    $global_settings  = $this->get_global_settings();
+    $global_animation = $this->get_global_animations();
+
+    $page_configs = array_merge($page_configs, $global_animation);
+    $active_presets = $this->get_active_presets($page_configs, $is_custom);
+
+    do_action('motionkit/frontend/before_enqueue_scripts', $page_configs, $global_settings);
+
+    $deps = apply_filters('motionkit_core_lib_deps', []);
+
+    $active_plugins = $this->get_active_plugins($page_configs, $is_custom);
+    if (!empty($active_plugins)) {
+      $deps = array_merge($deps, $active_plugins);
+    }
+
+    $enqueued_handles = [];
+
+    if ($is_custom || $this->is_full_preview()) {
+      $custom_anim_file = 'assets/build/modules/animation-builder/frontend/customAnimation.js';
+      if (file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . $custom_anim_file)) {
+        $custom_handle = 'motionkit-custom-animation';
+        wp_enqueue_script(
+          $custom_handle,
+          MOTIONKIT_CONNECTOR_PLUGIN_URL . $custom_anim_file,
+          $deps,
+          MOTIONKIT_CONNECTOR_VERSION,
+          true
+        );
+        $enqueued_handles[] = $custom_handle;
+      }
+    }
+
+    $this->enqueue_preset_bundles($active_presets, $is_custom, $deps, $enqueued_handles);
+
+    $frontend_deps = array_values(array_unique(array_merge($deps, $enqueued_handles)));
+    $this->enqueue_core_frontend($page_configs, $is_custom, $frontend_deps);
+  }
+
+  /**
+   * Enqueue editor preview scripts
+   *
+   * @return void
+   */
+  private function enqueue_editor_preview_scripts(): void
+  {
+    $deps = apply_filters('motionkit_core_lib_deps', []);
+    $all_plugins = [
+      'ScrollToPlugin',
+      'DrawSVGPlugin',
+      'MorphSVGPlugin',
+      'MotionPathPlugin',
+      'SplitText',
+      'Flip',
+    ];
+
+    foreach ($all_plugins as $plugin) {
+      if (wp_script_is($plugin, 'registered')) {
+        $deps[] = $plugin;
+      }
+    }
+
+    $enqueued_handles = [];
+
+    // Enqueue customAnimation in editor preview
+    $custom_anim_file = 'assets/build/modules/animation-builder/frontend/customAnimation.js';
+    if (file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . $custom_anim_file)) {
+      $custom_handle = 'motionkit-custom-animation';
+      wp_enqueue_script(
+        $custom_handle,
+        MOTIONKIT_CONNECTOR_PLUGIN_URL . $custom_anim_file,
+        $deps,
+        MOTIONKIT_CONNECTOR_VERSION,
+        true
+      );
+      $enqueued_handles[] = $custom_handle;
+    }
+
+    $this->enqueue_preset_bundles([], false, $deps, $enqueued_handles);
+
+    $frontend_deps = array_values(array_unique(array_merge($deps, $enqueued_handles)));
+    $this->enqueue_core_frontend([], false, $frontend_deps);
+
+    // Enqueue editor-reset
+    if (file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . 'assets/build/modules/animation-builder/frontend/editor-reset.js')) {
+      wp_enqueue_script(
+        'motionkit-editor-reset',
+        MOTIONKIT_CONNECTOR_PLUGIN_URL . 'assets/build/modules/animation-builder/frontend/editor-reset.js',
+        ['motionkit-frontend'],
+        MOTIONKIT_CONNECTOR_VERSION,
+        true
+      );
+    }
+
+    // Enqueue editor-bridge
+    if (file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . 'assets/build/modules/animation-builder/editor-bridge.js')) {
+      wp_enqueue_script(
+        'motionkit-editor-bridge',
+        MOTIONKIT_CONNECTOR_PLUGIN_URL . 'assets/build/modules/animation-builder/editor-bridge.js',
+        ['motionkit-frontend'],
+        MOTIONKIT_CONNECTOR_VERSION,
+        true
+      );
+    }
+  }
+
+  /**
+   * Enqueue per-preset bundle files
+   *
+   * @param array $active_presets
+   * @param bool  $is_custom
+   * @param array $deps
+   * @param array $enqueued_handles
+   * @return void
+   */
+  private function enqueue_preset_bundles(array $active_presets, bool $is_custom, array $deps, array &$enqueued_handles = []): void
+  {
+    $dir = 'assets/build/modules/animation-builder/frontend/presets/';
+    $assets_file = MOTIONKIT_CONNECTOR_PLUGIN_DIR . 'includes/Common/configs/animation-builder-assets.php';
+    $asset_map = file_exists($assets_file) ? require $assets_file : [];
+    $premium_presets = $asset_map['premiumPresets'] ?? [];
+
+    if ($this->is_editor_preview() || $this->is_full_preview()) {
+      $files = glob(MOTIONKIT_CONNECTOR_PLUGIN_DIR . $dir . '*.js');
+      if ($files) {
+        foreach ($files as $file) {
+          $filename = basename($file, '.js');
+          $handle = 'motionkit-preset-' . sanitize_key($filename);
+          wp_enqueue_script(
+            $handle,
+            MOTIONKIT_CONNECTOR_PLUGIN_URL . $dir . $filename . '.js',
+            $deps,
+            MOTIONKIT_CONNECTOR_VERSION,
+            true
+          );
+          $enqueued_handles[] = $handle;
+        }
+      }
+      return;
+    }
+
+    foreach ($active_presets as $key => $meta) {
+      if (is_array($meta) && !empty($meta['src'])) {
+        $src = $meta['src'];
+        $preset_deps = array_values(array_unique(array_merge($deps, $meta['deps'] ?? [])));
+        foreach ($preset_deps as $p_dep) {
+          if (wp_script_is($p_dep, 'registered') && !wp_script_is($p_dep, 'enqueued')) {
+            wp_enqueue_script($p_dep);
+          }
+        }
+        $handle = 'motionkit-preset-' . sanitize_key((string) $key);
+        wp_enqueue_script($handle, $src, $preset_deps, $meta['version'] ?? MOTIONKIT_CONNECTOR_VERSION, true);
+        $enqueued_handles[] = $handle;
+      } elseif (isset($premium_presets[$key])) {
+        $p_info = $premium_presets[$key];
+        $src = $p_info['src'];
+        $preset_deps = array_values(array_unique(array_merge($deps, $p_info['deps'] ?? [])));
+        foreach ($preset_deps as $p_dep) {
+          if (wp_script_is($p_dep, 'registered') && !wp_script_is($p_dep, 'enqueued')) {
+            wp_enqueue_script($p_dep);
+          }
+        }
+        $handle = 'motionkit-preset-' . sanitize_key((string) $key);
+        wp_enqueue_script($handle, $src, $preset_deps, $p_info['version'] ?? MOTIONKIT_CONNECTOR_VERSION, true);
+        $enqueued_handles[] = $handle;
+      } else {
+        $clean_name = sanitize_key((string) $key);
+        $bundle_file = $dir . $clean_name . '.js';
+        if (file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . $bundle_file)) {
+          $handle = 'motionkit-preset-' . $clean_name;
+          wp_enqueue_script($handle, MOTIONKIT_CONNECTOR_PLUGIN_URL . $bundle_file, $deps, MOTIONKIT_CONNECTOR_VERSION, true);
+          $enqueued_handles[] = $handle;
+        }
+      }
+    }
+  }
+
+  /**
+   * Enqueue core frontend runtime and localize data
+   *
+   * @param array $page_configs
+   * @param bool  $is_custom
+   * @param array $deps
+   * @return void
+   */
+  private function enqueue_core_frontend(array $page_configs, bool $is_custom, array $deps): void
+  {
+    $handle = 'motionkit-frontend';
+
+    wp_enqueue_script(
+      $handle,
+      MOTIONKIT_CONNECTOR_PLUGIN_URL . 'assets/build/modules/animation-builder/frontend.js',
+      $deps,
+      MOTIONKIT_CONNECTOR_VERSION,
+      true
+    );
+
+    $page_settings = $this->page_type->getConfig(
+      $this->settings_config($this->page_type->getCurrentPageType())
+    );
+
+    $device_config = file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . 'includes/Common/configs/animation-builder-device.php')
+      ? require MOTIONKIT_CONNECTOR_PLUGIN_DIR . 'includes/Common/configs/animation-builder-device.php'
+      : [];
+
+    $folders = get_option('motionkit_animation_folders', []);
+    if (!is_array($folders)) {
+      $folders = [];
+    }
+
+    $fav = get_option('motionkit_favourite_cloud_animation', []);
+    if (!is_array($fav)) {
+      $fav = [];
+    }
+
+    $token = isset($_GET['motionkit_token']) ? sanitize_text_field(wp_unslash($_GET['motionkit_token'])) : '';
+
+    $runtime_data = [
+      'platform'                  => 'wordpress',
+      'ajax_url'                  => admin_url('admin-ajax.php'),
+      'nonce'                     => wp_create_nonce('motionkit_frontend_nonce'),
+      'rest_url'                  => rest_url('motionkit/v1/'),
+      'site_url'                  => home_url('/'),
+      'base_domain'               => home_url('/'),
+      'motionkit_token'           => $token,
+      'pageTypeConfigs'           => $this->page_type->getCurrentPageType(),
+      'currentPageSettings'       => is_array($page_settings) ? $page_settings : [],
+      'globalSettings'            => $this->get_global_settings(),
+      'global_settings'           => $this->get_global_settings(),
+      'globalAnimation'           => $this->get_global_animations(),
+      'global_animation'          => $this->get_global_animations(),
+      'pageConfigs'               => $page_configs,
+      'page_animation'            => $this->page_type->getConfig(),
+      'all_animations'            => $page_configs,
+      'all_settings'              => [
+        'deviceConfig'        => $device_config,
+        'globalSettings'      => $this->get_global_settings(),
+        'currentPageSettings' => is_array($page_settings) ? $page_settings : [],
+      ],
+      'favourite_cloud_animation' => $fav,
+      'favouriteCloudAnimation'   => $fav,
+      'animation_folders'         => $folders,
+      'animationFolders'          => $folders,
+      'device_config'             => $device_config,
+      'deviceConfig'              => $device_config,
+      'isEditor'                  => $this->is_editor_preview(),
+      'isFullPreview'             => $this->is_full_preview(),
+    ];
+
+    wp_localize_script($handle, 'motionkitData', $runtime_data);
+  }
+
+  /**
+   * Determine active presets in page configurations
+   *
+   * @param array $configs
+   * @param bool  $is_custom
+   * @return array
+   */
+  private function get_active_presets(array $configs, bool &$is_custom): array
+  {
+    $presets = [];
+    $assets_file = MOTIONKIT_CONNECTOR_PLUGIN_DIR . 'includes/Common/configs/animation-builder-assets.php';
+    $asset_map = file_exists($assets_file) ? require $assets_file : [];
+    $premium_presets = $asset_map['premiumPresets'] ?? [];
+
+    foreach ($configs as $config) {
+      if (!is_array($config)) {
+        continue;
+      }
+
+      $type = $config['animationType'] ?? ($config['type'] ?? '');
+      $group = $config['group'] ?? '';
+      $preset_key = $config['presetKey'] ?? '';
+
+      if ($type === 'custom' || $group === 'custom_animation' || $group === 'cloud_trigger' || isset($config['timeline'])) {
+        $is_custom = true;
+      }
+
+      if (!empty($preset_key) && isset($premium_presets[$preset_key])) {
+        $presets[$preset_key] = $premium_presets[$preset_key];
+      } elseif (!empty($preset_key)) {
+        $presets[$preset_key] = true;
+      } elseif (!empty($type) && is_string($type)) {
+        $presets[$type] = true;
+      }
+    }
+
+    return $presets;
+  }
+
+  /**
+   * Determine required GSAP plugin handles for the active animation configs
+   *
+   * @param array $configs
+   * @param bool  $is_custom
+   * @return array
+   */
+  private function get_active_plugins(array $configs, bool $is_custom): array
+  {
+    $plugins = [];
+
+    if ($is_custom) {
+      if (wp_script_is('ScrollTrigger', 'registered')) {
+        $plugins[] = 'ScrollTrigger';
+      }
+    }
+
+    $json_string = wp_json_encode($configs);
+
+    $plugin_keywords = [
+      'splitText'    => 'SplitText',
+      'SplitText'    => 'SplitText',
+      'drawSVG'      => 'DrawSVGPlugin',
+      'DrawSVG'      => 'DrawSVGPlugin',
+      'morphSVG'     => 'MorphSVGPlugin',
+      'MorphSVG'     => 'MorphSVGPlugin',
+      'motionPath'   => 'MotionPathPlugin',
+      'MotionPath'   => 'MotionPathPlugin',
+      'scrollTo'     => 'ScrollToPlugin',
+      'ScrollTo'     => 'ScrollToPlugin',
+      'scrambleText' => 'ScrambleTextPlugin',
+      'physics2D'    => 'Physics2DPlugin',
+      'flip'         => 'Flip',
+      'Flip'         => 'Flip',
+    ];
+
+    foreach ($plugin_keywords as $keyword => $handle) {
+      if (stripos($json_string, '"' . $keyword . '"') !== false || stripos($json_string, $keyword) !== false) {
+        if (wp_script_is($handle, 'registered')) {
+          $plugins[] = $handle;
+        }
+      }
+    }
+
+    foreach ($configs as $config) {
+      if (!is_array($config)) {
+        continue;
+      }
+
+      $needed = $config['requiredPlugins'] ?? [];
+      if (is_array($needed)) {
+        foreach ($needed as $plugin) {
+          $handle = self::GSAP_SCHEMA_TO_HANDLE[$plugin] ?? $plugin;
+          if (wp_script_is($handle, 'registered')) {
+            $plugins[] = $handle;
+          }
+        }
+      }
+    }
+
+    return array_values(array_unique($plugins));
+  }
+
+  /**
+   * Check whether current request is inside the editor preview iframe
+   *
+   * @return bool
+   */
+  private function is_editor_preview(): bool
+  {
+    return isset($_GET['action']) && sanitize_text_field(wp_unslash($_GET['action'])) === 'motionkit-editor';
+  }
+
+  /**
+   * Check whether current request is a full preview
+   *
+   * @return bool
+   */
+  private function is_full_preview(): bool
+  {
+    return isset($_GET['motionkit_preview']) && sanitize_text_field(wp_unslash($_GET['motionkit_preview'])) === 'full';
+  }
+
+  /**
+   * Set headers to allow editor iframe embedding
+   *
+   * @return void
+   */
+  public function allow_editor_iframe(): void
+  {
+    // Only relax framing on the editor-preview request itself. Doing it on
+    // every front-end request stripped X-Frame-Options site-wide, and the
+    // old wildcard origin made frame-ancestors meaningless (clickjacking on
+    // every page). editor_allowed_origins() no longer emits '*'.
+    if (!$this->is_editor_preview()) {
+      return;
+    }
+
+    $allowed_origins = $this->editor_allowed_origins();
+    if (empty($allowed_origins)) {
+      return;
+    }
+
+    header_remove('X-Frame-Options');
+    header('Content-Security-Policy: frame-ancestors ' . implode(' ', $allowed_origins));
+  }
+
+  /**
+   * Send no-store cache headers on editor-preview requests so page caches
+   * can't feed a stale localized snapshot back into the editor iframe.
+   *
+   * @return void
+   */
+  public function no_store_for_editor_preview(): void
+  {
+    if (!$this->is_editor_preview() && !$this->is_full_preview()) {
+      return;
+    }
+
+    if (!headers_sent()) {
+      nocache_headers();
+      header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    if (!defined('DONOTCACHEPAGE')) {
+      define('DONOTCACHEPAGE', true);
+    }
+  }
+
+  // ─── AJAX Handlers ───────────────────────────────────────────────
+
+  public function ajax_configs_store(): void
+  {
+    check_ajax_referer('motionkit_frontend_nonce', 'nonce');
+
+    if (!current_user_can('edit_posts')) {
+      wp_send_json_error(['msg' => 'unauthorized'], 403);
+    }
+
+    $raw = isset($_POST['configs']) ? sanitize_text_field(wp_unslash($_POST['configs'])) : '';
+    $configs = json_decode($raw, true);
+
+    if (!is_array($configs)) {
+      wp_send_json_error(['msg' => 'invalid_data'], 400);
+    }
+
+    $this->page_type->saveConfig(
+      $this->page_type->getCurrentPageType(),
+      $configs
+    );
+
+    wp_send_json_success(['msg' => 'configs_saved']);
+  }
+
+  public function ajax_configs_delete(): void
+  {
+    check_ajax_referer('motionkit_frontend_nonce', 'nonce');
+
+    if (!current_user_can('edit_posts')) {
+      wp_send_json_error(['msg' => 'unauthorized'], 403);
+    }
+
+    $this->page_type->deleteConfig();
+
+    wp_send_json_success(['msg' => 'configs_deleted']);
+  }
+
+  public function ajax_global_configs_store(): void
+  {
+    check_ajax_referer('motionkit_frontend_nonce', 'nonce');
+
+    if (!current_user_can('manage_options')) {
+      wp_send_json_error(['msg' => 'unauthorized'], 403);
+    }
+
+    $raw = isset($_POST['configs']) ? sanitize_text_field(wp_unslash($_POST['configs'])) : '';
+    $configs = json_decode($raw, true);
+
+    if (!is_array($configs)) {
+      wp_send_json_error(['msg' => 'invalid_data'], 400);
+    }
+
+    update_option('motionkit_global_animations', $configs);
+
+    wp_send_json_success(['msg' => 'global_configs_saved']);
+  }
+
+  public function ajax_global_configs_delete(): void
+  {
+    check_ajax_referer('motionkit_frontend_nonce', 'nonce');
+
+    if (!current_user_can('manage_options')) {
+      wp_send_json_error(['msg' => 'unauthorized'], 403);
+    }
+
+    delete_option('motionkit_global_animations');
+
+    wp_send_json_success(['msg' => 'global_configs_deleted']);
+  }
+}

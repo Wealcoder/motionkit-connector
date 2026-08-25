@@ -17,6 +17,8 @@ $mk_options = [
     // Activation bookkeeping
     'motionkit_extension_version',
     'motionkit_extension_creation_date',
+    // One-shot autoload-migration sentinel (maybe_fix_autoload_flags).
+    'motionkit_autoload_fixed_v1',
     // Settings / animation data
     'motionkit_global_settings',
     'motionkit_global_animations',
@@ -32,6 +34,9 @@ $mk_options = [
     'motionkit_connected_email',
     'motionkit_license_state',
     'motionkit_enc_fallback_key',
+    // Legacy pre-OAuth connection settings (read by JwtTokenManager::get_secret).
+    'motionkit_editor_url',
+    'motionkit_api_key',
 ];
 
 foreach ($mk_options as $mk_option) {

@@ -140,9 +140,42 @@ final class Plugin
     private function init_hooks(): void
     {
         add_action('plugins_loaded', [$this, 'init'], 10);
+        // One-shot autoload migration — flips legacy option rows that were saved with autoload=no but are read on every frontend request, so they join the alloptions cache instead of triggering a SELECT per page load. Sentinel-guarded to run exactly once per install. Lives here (not the dashboard plugin) because the hot options are this plugin's own.
+        add_action('admin_init', [$this, 'maybe_fix_autoload_flags'], 5);
 
         register_activation_hook($this->plugin_file, [$this, 'activate']);
         register_deactivation_hook($this->plugin_file, [$this, 'deactivate']);
+    }
+
+    /**
+     * Flip autoload=yes on hot-path options that were originally written with
+     * autoload=no. WP only honors the flag on first-create, so existing rows
+     * stay autoload=no forever unless we update wp_options.autoload directly.
+     *
+     * Cheap: one indexed UPDATE against wp_options, gated by a sentinel.
+     *
+     * @return void
+     */
+    public function maybe_fix_autoload_flags(): void
+    {
+        if (get_option('motionkit_autoload_fixed_v1') === '1') {
+            return;
+        }
+
+        global $wpdb;
+        $hot_options = ['motionkit_page_settings_updated_at'];
+        // Dynamic %s,%s,... placeholder list sized to $hot_options — this IS the prepare() placeholder syntax, not unescaped SQL; $hot_options is a hardcoded literal above, never external input. The sniff can't trace that {$placeholders} expands to valid %s placeholders before prepare() consumes them via the variadic ...$hot_options args below.
+        $placeholders = implode(',', array_fill(0, count($hot_options), '%s'));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$wpdb->options} SET autoload = 'yes'
+                 WHERE option_name IN ({$placeholders}) AND autoload != 'yes'", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+                ...$hot_options
+            )
+        );
+        wp_cache_delete('alloptions', 'options');
+        update_option('motionkit_autoload_fixed_v1', '1', true);
     }
 
     /**
@@ -153,12 +186,28 @@ final class Plugin
     public function init(): void
     {
         $this->init_auth();
+        $this->init_admin_tools();
         $this->init_frontend();
         $this->init_rest_api();
         $this->init_dependency_installer();
         $this->init_plugin_row_links();
 
         do_action('MOTIONKIT_EXTENSION_LOADED');
+    }
+
+    /**
+     * Register the animation-data tools handlers (Tools tab data layer:
+     * list/delete AJAX + delete_one POST). The tab's UI lives in the
+     * MotionKit dashboard plugin; admin-ajax requests run with is_admin()
+     * true, so the guard covers them too.
+     *
+     * @return void
+     */
+    private function init_admin_tools(): void
+    {
+        if (is_admin()) {
+            (new \MotionKitConnector\Admin\AnimationDataTools())->init();
+        }
     }
 
     /**

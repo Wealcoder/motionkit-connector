@@ -189,7 +189,9 @@ final class OAuthHandler
       return;
     }
 
-    if ($_GET['page'] !== 'motionkit-connect') {
+    // Unslash + sanitize before comparing; CSRF for this OAuth callback is enforced by the server-stored `state` token validated with hash_equals() below.
+    $page = sanitize_key(wp_unslash($_GET['page']));
+    if ($page !== 'motionkit-connect') {
       return;
     }
 
@@ -370,15 +372,39 @@ final class OAuthHandler
   {
     $key = self::get_encryption_key();
     $iv = random_bytes(16);
-    $encrypted = openssl_encrypt($value, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
+    $ciphertext = openssl_encrypt($value, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
 
-    return base64_encode($iv . $encrypted);
+    // Encrypt-then-MAC: sign IV+ciphertext so an attacker with DB-write access can't bit-flip the stored token undetected; the 'v2:' prefix keeps pre-MAC values decryptable via the legacy branch below.
+    $mac = hash_hmac('sha256', $iv . $ciphertext, $key, true);
+
+    return 'v2:' . base64_encode($mac . $iv . $ciphertext);
   }
 
   private static function decrypt(string $encrypted)
   {
     $key = self::get_encryption_key();
-    $data = base64_decode($encrypted);
+
+    if (strpos($encrypted, 'v2:') === 0) {
+      // Strict mode so malformed base64 fails here instead of silently decoding garbage.
+      $data = base64_decode(substr($encrypted, 3), true);
+      // 32-byte MAC + 16-byte IV + at least one cipher block.
+      if ($data === false || strlen($data) < 49) {
+        return false;
+      }
+
+      $mac = substr($data, 0, 32);
+      $iv = substr($data, 32, 16);
+      $ciphertext = substr($data, 48);
+
+      if (!hash_equals(hash_hmac('sha256', $iv . $ciphertext, $key, true), $mac)) {
+        return false;
+      }
+
+      return openssl_decrypt($ciphertext, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
+    }
+
+    // Legacy (pre-MAC) format: IV + ciphertext, no integrity tag. Still accepted so existing connections survive the upgrade; re-connecting or switching accounts rewrites the option in v2 format.
+    $data = base64_decode($encrypted, true);
 
     if ($data === false || strlen($data) < 17) {
       return false;

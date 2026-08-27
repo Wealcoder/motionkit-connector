@@ -1,3 +1,4 @@
+import { isPlayable } from "../../../shared/animation-status.js";
 const PRESET_KEY = "motionkit-mk-sticky-hs-pa";
 
 export function headerStickyAnim() {
@@ -80,7 +81,7 @@ export function headerStickyAnim() {
   function handler(e) {
     const anim = e?.detail;
     if (!anim || anim.presetKey !== PRESET_KEY) return;
-    if (anim.isPublished === false) return;
+    if (!isPlayable(anim)) return;
     if (!anim.itemClass) return;
 
     const {

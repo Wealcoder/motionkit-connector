@@ -1,5 +1,7 @@
 "use strict";
 
+import { isPlayable } from "./shared/animation-status.js";
+
 if (typeof window !== "undefined" && typeof window.__MOTIONKIT_DEVTOOLS__ === "undefined") {
   window.__MOTIONKIT_DEVTOOLS__ = false;
 }
@@ -62,14 +64,15 @@ if (typeof window !== "undefined" && typeof window.__MOTIONKIT_DEVTOOLS__ === "u
     return r[deviceKey] !== false;
   }
 
-  // True if the node is published. Missing isPublished defaults to true
-  // so payloads that never set the flag still run.
+  // Whether the node may run here — draft refuses, preview and published play. Shared with every
+  // preset entry so one rule governs the whole runtime; see shared/animation-status.js for why
+  // this is a backstop rather than the actual permission check.
   function isActive(node) {
     if (!node || typeof node !== "object") return true;
-    return node.isPublished !== false;
+    return isPlayable(node);
   }
 
-  // Walk all_animations once: filter by published/responsive, flatten the
+  // Walk all_animations once: filter by state/responsive, flatten the
   // per-device vars bag, and collect active GSAP plugins inline. Returns
   // { animations, activePlugins } so callers don't re-walk the tree.
   function buildAnimationsForDevice(all_animations, deviceKey) {

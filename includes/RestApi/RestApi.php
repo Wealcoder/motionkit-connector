@@ -23,7 +23,9 @@ if (!defined('ABSPATH')) {
   exit;
 }
 
+use MotionKitConnector\Common\AnimationResolver;
 use MotionKitConnector\Common\MotionkitBuilderPageType;
+use MotionKitConnector\Common\ShareLinks;
 use MotionKitConnector\Auth\JwtTokenManager;
 use MotionKitConnector\Support\EditorSessionTrait;
 
@@ -44,6 +46,20 @@ final class RestApi
   private MotionkitBuilderPageType $page_type;
 
   /**
+   * Animation payload resolver — stitches the published/draft pair for reads.
+   *
+   * @var AnimationResolver
+   */
+  private AnimationResolver $resolver;
+
+  /**
+   * Share link store.
+   *
+   * @var ShareLinks
+   */
+  private ShareLinks $share_links;
+
+  /**
    * Initialize REST API
    *
    * @return void
@@ -51,6 +67,8 @@ final class RestApi
   public function init(): void
   {
     $this->page_type = MotionkitBuilderPageType::instance();
+    $this->resolver = new AnimationResolver($this->page_type);
+    $this->share_links = new ShareLinks($this->page_type);
     add_action('rest_api_init', [$this, 'register_routes']);
     add_filter('rest_pre_serve_request', [$this, 'add_cors_headers'], 10, 4);
   }
@@ -216,6 +234,9 @@ final class RestApi
       'delete_global_settings',
       'delete_current_page_settings',
       'get_settings',
+      'create_share_link',
+      'revoke_share_link',
+      'list_share_links',
     ];
     if (!in_array($action, $allowed, true)) {
       return new \WP_REST_Response(['success' => false, 'error' => 'unknown_action'], 400);
@@ -228,8 +249,23 @@ final class RestApi
         return new \WP_REST_Response(['success' => true, 'data' => ['msg' => 'global_settings_saved']], 200);
 
       case 'save_global_animation':
-        update_option('motionkit_global_animations', $payload['animationConfigs'] ?? []);
+        // The editor sends one list; storage keeps published and draft apart so only the published half ever reaches a visitor's HTML.
+        $parts = AnimationResolver::partition_for_storage(
+          is_array($payload['animationConfigs'] ?? null) ? $payload['animationConfigs'] : []
+        );
+        update_option(AnimationResolver::GLOBAL_PUBLISHED_OPTION, $parts['published']);
+        if (empty($parts['drafts'])) {
+          delete_option(AnimationResolver::GLOBAL_DRAFT_OPTION);
+        } else {
+          update_option(AnimationResolver::GLOBAL_DRAFT_OPTION, $parts['drafts']);
+        }
         update_option('motionkit_page_settings_updated_at', time(), true);
+        // Global links are stored on whichever page they were created for, so publishing a global animation can only retire its link while the editor is still telling us which page that is.
+        $this->resolver->forget_globals();
+        $page_type_config = $payload['pageTypeConfigs'] ?? [];
+        if (is_array($page_type_config) && $this->is_valid_page_type_config($page_type_config)) {
+          $this->sync_share_links($page_type_config);
+        }
         return new \WP_REST_Response(['success' => true, 'data' => ['msg' => 'global_animation_saved']], 200);
 
       case 'save_current_page_animation':
@@ -237,10 +273,11 @@ final class RestApi
         if (!is_array($page_type_config) || !$this->is_valid_page_type_config($page_type_config)) {
           return new \WP_REST_Response(['success' => false, 'error' => 'invalid_page_type_config'], 400);
         }
-        $this->page_type->saveConfig(
-          $page_type_config,
-          $payload['animationConfigs'] ?? []
+        $parts = AnimationResolver::partition_for_storage(
+          is_array($payload['animationConfigs'] ?? null) ? $payload['animationConfigs'] : []
         );
+        $this->page_type->saveConfig($page_type_config, $parts['published']);
+        $this->write_page_drafts($page_type_config, $parts['drafts']);
         update_option('motionkit_page_settings_updated_at', time(), true);
         return new \WP_REST_Response(['success' => true, 'data' => ['msg' => 'page_animation_saved']], 200);
 
@@ -326,22 +363,118 @@ final class RestApi
         }
         $this->page_type->deleteConfig($this->settings_config($page_type_config));
         $this->page_type->deleteConfig($page_type_config);
+        // Drafts and share links belong to the animations being cleared — leaving them would resurrect drafts on the next read and keep dead links listed.
+        $this->page_type->deleteConfig(AnimationResolver::draft_config($page_type_config));
+        $this->page_type->deleteConfig(ShareLinks::share_config($page_type_config));
         update_option('motionkit_page_settings_updated_at', time(), true);
         return new \WP_REST_Response(['success' => true, 'data' => ['msg' => 'page_config_deleted']], 200);
 
       case 'get_settings':
+        // Share rows live on a page, so which global animations read as shared depends on which page is asking. Without a descriptor the list is still correct, just unable to distinguish a shared draft from a private one.
+        $page_type_config = $payload['pageTypeConfigs'] ?? [];
+        $preview_ids = is_array($page_type_config) && $this->is_valid_page_type_config($page_type_config)
+          ? $this->share_links->shared_ids($page_type_config)
+          : [];
+
         return new \WP_REST_Response([
           'success' => true,
           'data'    => [
             'globalSettings'          => get_option('motionkit_global_settings', []),
-            'globalAnimation'         => get_option('motionkit_global_animations', []),
+            // Stitched so the editor gets one list with working copies re-attached, the same shape it sent.
+            'globalAnimation'         => $this->resolver->global_for_editor($preview_ids),
             'favouriteCloudAnimation' => get_option('motionkit_favourite_cloud_animation', []),
             'animationFolders'        => $this->get_animation_folders(),
           ],
         ], 200);
+
+      case 'create_share_link':
+        $page_type_config = $payload['pageTypeConfigs'] ?? [];
+        if (!is_array($page_type_config) || !$this->is_valid_page_type_config($page_type_config)) {
+          return new \WP_REST_Response(['success' => false, 'error' => 'invalid_page_type_config'], 400);
+        }
+        // The records come from storage, not from the request: the editor names ids, the connector decides what those ids currently mean. That keeps a share link unable to publish anything the last save did not already write.
+        $token = $this->share_links->create(
+          $page_type_config,
+          is_array($payload['animationIds'] ?? null) ? $payload['animationIds'] : [],
+          $this->resolver->drafts_by_id($page_type_config),
+          isset($payload['sharedVersion']) && is_string($payload['sharedVersion']) ? $payload['sharedVersion'] : ''
+        );
+        if ($token === null) {
+          return new \WP_REST_Response(['success' => false, 'error' => 'share_link_no_content'], 400);
+        }
+        // Only the token goes back; the editor already knows the page URL it is editing and builds the link itself, which keeps URL validation out of this handler.
+        return new \WP_REST_Response([
+          'success' => true,
+          'data'    => ['token' => $token, 'param' => ShareLinks::QUERY_PARAM],
+        ], 200);
+
+      case 'revoke_share_link':
+        $page_type_config = $payload['pageTypeConfigs'] ?? [];
+        if (!is_array($page_type_config) || !$this->is_valid_page_type_config($page_type_config)) {
+          return new \WP_REST_Response(['success' => false, 'error' => 'invalid_page_type_config'], 400);
+        }
+        // Revoking is addressed by animation id, not token — tokens are stored hashed, so nobody can name the link they handed out after the fact.
+        $revoked = $this->share_links->revoke_for_animation(
+          $page_type_config,
+          isset($payload['animationId']) && is_string($payload['animationId']) ? $payload['animationId'] : ''
+        );
+        return new \WP_REST_Response(['success' => true, 'data' => ['revoked' => $revoked]], 200);
+
+      case 'list_share_links':
+        $page_type_config = $payload['pageTypeConfigs'] ?? [];
+        if (!is_array($page_type_config) || !$this->is_valid_page_type_config($page_type_config)) {
+          return new \WP_REST_Response(['success' => false, 'error' => 'invalid_page_type_config'], 400);
+        }
+        return new \WP_REST_Response([
+          'success' => true,
+          'data'    => ['links' => $this->share_links->listing($page_type_config)],
+        ], 200);
     }
 
     return new \WP_REST_Response(['success' => false, 'error' => 'unreachable'], 500);
+  }
+
+  /**
+   * Write the page's draft bucket, then bring its share links back in step.
+   *
+   * A save is the only moment the shared copy changes: it refreshes the records
+   * of animations still under review, and drops the ones that just left it —
+   * published or deleted, both look the same from here, which is why neither
+   * needs a hook of its own.
+   *
+   * @param array $page_type_config Descriptor for the page's animation key.
+   * @param array $drafts           Draft entries to store.
+   * @return void
+   */
+  private function write_page_drafts(array $page_type_config, array $drafts): void
+  {
+    $draft_config = AnimationResolver::draft_config($page_type_config);
+
+    if (empty($drafts)) {
+      $this->page_type->deleteConfig($draft_config);
+    } else {
+      $this->page_type->saveConfig($draft_config, $drafts);
+    }
+
+    $this->sync_share_links($page_type_config);
+  }
+
+  /**
+   * Re-copy this page's share links from what storage now holds.
+   *
+   * Reads back rather than reusing the list just written, so page and global
+   * working copies are reconciled together — a global animation's link lives on
+   * the page it was created for and would otherwise never be revisited.
+   *
+   * @param array $page_type_config Descriptor for the page's animation key.
+   * @return void
+   */
+  private function sync_share_links(array $page_type_config): void
+  {
+    $this->share_links->reconcile(
+      $page_type_config,
+      $this->resolver->drafts_by_id($page_type_config)
+    );
   }
 
   public function search_pages(\WP_REST_Request $request): \WP_REST_Response

@@ -22,7 +22,10 @@ if (!defined('ABSPATH')) {
 }
 
 use MotionKitConnector\Common\Assets\AssetLoader;
+use MotionKitConnector\Common\AnimationResolver;
 use MotionKitConnector\Common\MotionkitBuilderPageType;
+use MotionKitConnector\Common\ShareContext;
+use MotionKitConnector\Common\ShareLinks;
 use MotionKitConnector\Auth\JwtTokenManager;
 use MotionKitConnector\Factory\ComponentFactory;
 use MotionKitConnector\Support\EditorSessionTrait;
@@ -65,6 +68,32 @@ final class Frontend
   private MotionkitBuilderPageType $page_type;
 
   /**
+   * Animation payload resolver — the only reader of the animation buckets.
+   *
+   * @var AnimationResolver
+   */
+  private AnimationResolver $resolver;
+
+  /**
+   * Share link store — validates the `mk_share` token against this page's rows.
+   *
+   * @var ShareLinks
+   */
+  private ShareLinks $share_links;
+
+  /**
+   * Per-request memo for the resolved share link.
+   *
+   * Sentinel `false` = not yet resolved; `null` = no link, or a token that
+   * matched nothing. A dead token deliberately lands on `null` so the request
+   * falls through the ordinary published path — a revoked link shows the live
+   * page rather than an error.
+   *
+   * @var ShareContext|null|false
+   */
+  private $share_context_cache = false;
+
+  /**
    * ScrollSmoother manager
    *
    * @var ScrollSmoother
@@ -93,13 +122,6 @@ final class Frontend
   private $global_settings_cache = false;
 
   /**
-   * Per-request memo for global animations.
-   *
-   * @var array|false
-   */
-  private $global_animations_cache = false;
-
-  /**
    * GSAP handles that actually registered this request.
    *
    * @var array<string,bool>
@@ -122,6 +144,8 @@ final class Frontend
   {
     $this->asset_loader = ComponentFactory::create_asset_loader();
     $this->page_type = MotionkitBuilderPageType::instance();
+    $this->resolver = new AnimationResolver($this->page_type);
+    $this->share_links = new ShareLinks($this->page_type);
     $this->smoother = new ScrollSmoother();
 
     $this->init_hooks();
@@ -134,6 +158,9 @@ final class Frontend
    */
   private function init_hooks(): void
   {
+    // Cache bypass is decided from the query string alone, before anything is resolved — a full-page cache writes its entry long before wp_enqueue_scripts runs, so deciding later would let a share response be stored and then served to ordinary visitors.
+    $this->block_page_cache_for_share();
+
     // Allow the editor iframe to embed this site
     add_action('send_headers', [$this, 'allow_editor_iframe']);
 
@@ -180,20 +207,6 @@ final class Frontend
       return $this->global_settings_cache;
     }
     return $this->global_settings_cache = get_option('motionkit_global_settings', []);
-  }
-
-  /**
-   * Read motionkit_global_animations, memoized per request.
-   *
-   * @return array
-   */
-  private function get_global_animations(): array
-  {
-    if ($this->global_animations_cache !== false) {
-      return $this->global_animations_cache;
-    }
-    $raw = get_option('motionkit_global_animations', []);
-    return $this->global_animations_cache = is_array($raw) ? $raw : [];
   }
 
   /**
@@ -748,16 +761,23 @@ final class Frontend
       return;
     }
 
-    $page_configs = $this->page_type->getConfig();
-    if (!is_array($page_configs)) {
-      $page_configs = [];
+    // Page identity is resolved once and threaded through — the animation read, the settings read and the share lookup all key off it.
+    $page_type_config = $this->page_type->getCurrentPageType();
+
+    // A valid share token swaps the shared animation's published version for its working copy; everything else on the page stays exactly what a visitor sees. An absent or dead token falls through to published, which is why a revoked link quietly shows the live page.
+    $share = $this->share_context($page_type_config);
+    $page_configs = $share === null
+      ? $this->resolver->published($page_type_config)
+      : $this->resolver->for_share($page_type_config, $share);
+
+    if ($share !== null) {
+      add_action('wp_footer', [$this, 'print_share_banner'], 99);
     }
 
     $is_custom = false;
-    $global_settings  = $this->get_global_settings();
-    $global_animation = $this->get_global_animations();
+    $global_settings = $this->get_global_settings();
 
-    $page_configs = array_merge($page_configs, $global_animation);
+    // Preset detection reads the same list that will be dispatched, so a shared draft's bundle is enqueued while an ordinary visit never loads it.
     $active_presets = $this->get_active_presets($page_configs, $is_custom);
 
     do_action('motionkit/frontend/before_enqueue_scripts', $page_configs, $global_settings);
@@ -950,9 +970,28 @@ final class Frontend
       true
     );
 
+    $page_type_config = $this->page_type->getCurrentPageType();
+
     $page_settings = $this->page_type->getConfig(
-      $this->settings_config($this->page_type->getCurrentPageType())
+      $this->settings_config($page_type_config)
     );
+
+    // The editor works with one list per bucket, working copies stitched back onto their published records — the same shape it sent on save. A visitor only ever gets the published half.
+    if ($this->is_editor_preview()) {
+      $editor_buckets = $this->resolver->for_editor(
+        $page_type_config,
+        $this->share_links->shared_ids($page_type_config)
+      );
+      $global_animation = $editor_buckets['global'];
+      $page_animation = $editor_buckets['page'];
+    } else {
+      $global_animation = $this->resolver->split(
+        $this->resolver->global_bucket(AnimationResolver::GLOBAL_PUBLISHED_OPTION)
+      )['published'];
+      $page_animation = $this->resolver->split(
+        $this->resolver->page_bucket($page_type_config)
+      )['published'];
+    }
 
     $device_config = file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . 'includes/Common/configs/animation-builder-device.php')
       ? require MOTIONKIT_CONNECTOR_PLUGIN_DIR . 'includes/Common/configs/animation-builder-device.php'
@@ -978,14 +1017,14 @@ final class Frontend
       'site_url'                  => home_url('/'),
       'base_domain'               => home_url('/'),
       'motionkit_token'           => $token,
-      'pageTypeConfigs'           => $this->page_type->getCurrentPageType(),
+      'pageTypeConfigs'           => $page_type_config,
       'currentPageSettings'       => is_array($page_settings) ? $page_settings : [],
       'globalSettings'            => $this->get_global_settings(),
       'global_settings'           => $this->get_global_settings(),
-      'globalAnimation'           => $this->get_global_animations(),
-      'global_animation'          => $this->get_global_animations(),
+      'globalAnimation'           => $global_animation,
+      'global_animation'          => $global_animation,
       'pageConfigs'               => $page_configs,
-      'page_animation'            => $this->page_type->getConfig(),
+      'page_animation'            => $page_animation,
       'all_animations'            => $page_configs,
       'all_settings'              => [
         'deviceConfig'        => $device_config,
@@ -1125,6 +1164,111 @@ final class Frontend
   private function is_full_preview(): bool
   {
     return isset($_GET['motionkit_preview']) && sanitize_text_field(wp_unslash($_GET['motionkit_preview'])) === 'full';
+  }
+
+  // ─── Share Link Preview ──────────────────────────────────────────
+
+  /**
+   * Whether this request carries a share token, valid or not.
+   *
+   * Deliberately shape-blind — cache decisions are made from this, and a bad
+   * token skipping the cache costs one uncached response while a good token
+   * landing in the cache would leak a draft to everyone.
+   *
+   * @return bool
+   */
+  private function is_share_preview(): bool
+  {
+    return isset($_GET[ShareLinks::QUERY_PARAM])
+      && is_string($_GET[ShareLinks::QUERY_PARAM])
+      && $_GET[ShareLinks::QUERY_PARAM] !== '';
+  }
+
+  /**
+   * Keep share responses out of every cache layer we can reach.
+   *
+   * @return void
+   */
+  private function block_page_cache_for_share(): void
+  {
+    if (!$this->is_share_preview()) {
+      return;
+    }
+
+    // The constant is what LiteSpeed, WP Rocket, W3TC and friends look for; it has to be set before they decide to buffer the response.
+    if (!defined('DONOTCACHEPAGE')) {
+      define('DONOTCACHEPAGE', true);
+    }
+
+    add_action('send_headers', [$this, 'send_share_nocache_headers']);
+  }
+
+  /**
+   * No-store headers for a share response.
+   *
+   * @return void
+   */
+  public function send_share_nocache_headers(): void
+  {
+    if (!$this->is_share_preview() || headers_sent()) {
+      return;
+    }
+
+    nocache_headers();
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+  }
+
+  /**
+   * Resolve the share token against this page's rows, memoized per request.
+   *
+   * @param array $page_type_config Descriptor from getCurrentPageType().
+   * @return ShareContext|null
+   */
+  private function share_context(array $page_type_config): ?ShareContext
+  {
+    if ($this->share_context_cache !== false) {
+      return $this->share_context_cache;
+    }
+
+    if (!$this->is_share_preview()) {
+      return $this->share_context_cache = null;
+    }
+
+    $token = sanitize_text_field(wp_unslash($_GET[ShareLinks::QUERY_PARAM]));
+
+    return $this->share_context_cache = $this->share_links->resolve($page_type_config, $token);
+  }
+
+  /**
+   * Mark the page as a preview so the viewer knows it is not the live site.
+   *
+   * Only printed for a link that actually resolved — a dead token renders the
+   * ordinary page, and labelling that a preview would be a lie.
+   *
+   * @return void
+   */
+  public function print_share_banner(): void
+  {
+    $context = $this->share_context_cache;
+    if (!$context instanceof ShareContext) {
+      return;
+    }
+
+    $version = $context->shared_version();
+    $stamp = '';
+    if ($version !== '') {
+      $time = strtotime($version);
+      if ($time !== false) {
+        $stamp = ' · ' . date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $time);
+      }
+    }
+
+    printf(
+      '<div id="motionkit-share-banner" style="position:fixed;left:0;right:0;bottom:0;z-index:2147483647;padding:8px 14px;font:500 13px/1.4 system-ui,-apple-system,sans-serif;color:#fff;background:#111;text-align:center;pointer-events:none">%s%s</div>',
+      esc_html__('Unpublished preview — visitors still see the published version.', 'motionkit-connector'),
+      esc_html($stamp)
+    );
   }
 
   /**

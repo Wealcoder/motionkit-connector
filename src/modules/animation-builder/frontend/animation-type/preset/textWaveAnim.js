@@ -1,4 +1,5 @@
 import { isPreviewMode } from "@/utils/isPreviewMode";
+import { isPlayable } from "../../../shared/animation-status.js";
 
 const PRESET_KEY = "motionkit-mk-text-wave-pa";
 
@@ -63,7 +64,7 @@ export function textWaveAnim() {
   function handler(e) {
     const anim = e?.detail;
     if (!anim || anim.presetKey !== PRESET_KEY) return;
-    if (anim.isPublished === false) return;
+    if (!isPlayable(anim)) return;
     if (!anim.itemClass) return;
 
     const {

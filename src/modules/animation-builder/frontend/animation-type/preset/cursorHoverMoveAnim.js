@@ -1,3 +1,4 @@
+import { isPlayable } from "../../../shared/animation-status.js";
 const PRESET_KEY = "motionkit-mk-cursor-cm-pa";
 
 export function cursorHoverMoveAnim() {
@@ -98,7 +99,7 @@ export function cursorHoverMoveAnim() {
   function handler(e) {
     const anim = e?.detail;
     if (!anim || anim.presetKey !== PRESET_KEY) return;
-    if (anim.isPublished === false) return;
+    if (!isPlayable(anim)) return;
     if (!anim.itemClass) return;
 
     const { id, containerClass, vars = {} } = anim;

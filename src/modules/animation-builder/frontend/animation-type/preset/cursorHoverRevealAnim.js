@@ -1,4 +1,5 @@
 import { VOID_ELEMENTS } from "../../../config/VoidElement";
+import { isPlayable } from "../../../shared/animation-status.js";
 
 const PRESET_KEY = "motionkit-mk-cursor-cr-pa";
 
@@ -144,7 +145,7 @@ export function cursorHoverRevealAnim() {
   function handler(e) {
     const anim = e?.detail;
     if (!anim || anim.presetKey !== PRESET_KEY) return;
-    if (anim.isPublished === false) return;
+    if (!isPlayable(anim)) return;
     if (!anim.itemClass) return;
 
     let items;

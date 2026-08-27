@@ -1,3 +1,4 @@
+import { isPlayable } from "../../../shared/animation-status.js";
 const PRESET_KEY = "motionkit-mk-scroll-hor-pa";
 
 export function horizontalScrollAnim() {
@@ -44,7 +45,7 @@ export function horizontalScrollAnim() {
   function handler(e) {
     const anim = e?.detail;
     if (!anim || anim.presetKey !== PRESET_KEY) return;
-    if (anim.isPublished === false) return;
+    if (!isPlayable(anim)) return;
     if (!anim.containerClass || !anim.itemClass) return;
 
     const { id, containerClass, itemClass, itemWidthType, vars = {} } = anim;

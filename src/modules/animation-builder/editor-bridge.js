@@ -100,6 +100,17 @@ const ENDPOINT_TO_ACTION = {
 };
 
 /**
+ * Share-link operations → simple-dispatcher action names. Kept separate from
+ * ENDPOINT_TO_ACTION because these return a body the editor reads, rather
+ * than a fire-and-forget save ack.
+ */
+const SHARE_OP_TO_ACTION = {
+  create: "create_share_link",
+  revoke: "revoke_share_link",
+  list: "list_share_links",
+};
+
+/**
  * No-op retained for call-site compatibility — we no longer use custom
  * auth headers (they'd trigger a CORS preflight).
  */
@@ -279,7 +290,11 @@ function receivePageConfig() {
         if (globalAnimation) {
           saveViaRest(
             "global-animation",
-            { animationConfigs: globalAnimation },
+            // The page descriptor rides along even though global animations are not page-scoped: share links live on the page they were made for, and publishing a global animation has to be able to retire the link that was previewing it.
+            {
+              pageTypeConfigs: motionkitData.pageTypeConfigs,
+              animationConfigs: globalAnimation,
+            },
             headers,
             () => {
               motionkitData.global_animation = globalAnimation;
@@ -408,6 +423,53 @@ function receivePageConfig() {
           () => {},
           presetKey,
         );
+      }
+
+      // Share links. Unlike the save messages above, the editor needs the
+      // response body back (the minted token), so this posts a dedicated
+      // result message rather than a save ack. `requestId` lets the editor
+      // pair a result with the call that asked for it.
+      if (event.data?.type === "motionkit-share-link") {
+        const { op, animationIds, sharedVersion, animationId } =
+          event.data.data || {};
+        const requestId = event.data.requestId || null;
+        // Reply to whoever asked, not to the remembered parent origin — the iframe is same-origin under proxy-snapshot but loads directly on some setups, and a mismatched target silently drops the reply.
+        const replyOrigin = event.origin || parentOrigin || "*";
+
+        const reply = (data, error) =>
+          sendToParent(
+            { type: "motionkit-share-link-result", requestId, data, error },
+            replyOrigin,
+          );
+
+        const action = SHARE_OP_TO_ACTION[op];
+        if (!action) {
+          reply(null, "unknown_share_op");
+          return;
+        }
+
+        fetch(restUrl("save"), {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=UTF-8" },
+          body: JSON.stringify({
+            token: getMotionKitToken(),
+            action,
+            payload: {
+              pageTypeConfigs: motionkitData.pageTypeConfigs,
+              animationIds,
+              sharedVersion,
+              animationId,
+            },
+          }),
+        })
+          .then((r) => r.json().catch(() => null))
+          .then((res) => {
+            if (res?.success) reply(res.data || {}, null);
+            else reply(null, res?.error || "share_link_failed");
+          })
+          .catch((err) => {
+            reply(null, String(err?.message || err || "network_error"));
+          });
       }
 
       // Respond to data requests from the SaaS editor

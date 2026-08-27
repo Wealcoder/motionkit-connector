@@ -33,6 +33,19 @@ class MotionkitBuilderPageType
   public string $settings_prefix = 'motionkit_pg_settings_';
 
   /**
+   * Per-request memo of stored configs, keyed by store target.
+   *
+   * A single page load reads the same animation key more than once (the enqueue
+   * pass and the localized payload), and the settings and draft keys are read
+   * from several places. Each miss was a real post_meta / term_meta / option
+   * lookup. Writes invalidate their own key, so a save followed by a read in
+   * the same request still sees fresh data.
+   *
+   * @var array<string,array>
+   */
+  private array $config_cache = [];
+
+  /**
    * Singleton instance
    *
    * @return self
@@ -70,6 +83,19 @@ class MotionkitBuilderPageType
   }
 
   /**
+   * Memo key identifying one stored config — the store target, not the page.
+   *
+   * @param array $config Resolved page type config.
+   * @return string
+   */
+  private function cacheKey(array $config): string
+  {
+    return ($config['store_type'] ?? '')
+      . '|' . (isset($config['id']) ? (string) $config['id'] : '')
+      . '|' . ($config['option'] ?? '');
+  }
+
+  /**
    * Save configuration for a given page type.
    *
    * @param array $config
@@ -79,6 +105,10 @@ class MotionkitBuilderPageType
   public function saveConfig(array $config, $animconf): bool
   {
     $resolved = $this->resolveConfig($config);
+
+    // Drop the memo before writing so a read later in this same request can't serve the pre-write value.
+    unset($this->config_cache[$this->cacheKey($resolved)]);
+
     $store_type = $resolved['store_type'];
     $option_key = $resolved['option'];
     $id = $resolved['id'];
@@ -111,6 +141,23 @@ class MotionkitBuilderPageType
   public function getConfig($page_type = false): array
   {
     $resolved = $this->resolveConfig($page_type);
+    $key = $this->cacheKey($resolved);
+
+    if (array_key_exists($key, $this->config_cache)) {
+      return $this->config_cache[$key];
+    }
+
+    return $this->config_cache[$key] = $this->readConfig($resolved);
+  }
+
+  /**
+   * Actually hit storage for a resolved config. Callers go through getConfig().
+   *
+   * @param array $resolved
+   * @return array
+   */
+  private function readConfig(array $resolved): array
+  {
     $store_type = $resolved['store_type'];
     $option_key = $resolved['option'];
     $id = $resolved['id'];
@@ -174,6 +221,9 @@ class MotionkitBuilderPageType
   public function deleteConfig($page_type = null): bool
   {
     $resolved = $this->resolveConfig($page_type);
+
+    unset($this->config_cache[$this->cacheKey($resolved)]);
+
     $store_type = $resolved['store_type'];
     $option_key = $resolved['option'];
     $id = $resolved['id'];

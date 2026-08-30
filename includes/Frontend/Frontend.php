@@ -835,37 +835,9 @@ final class Frontend
       }
     }
 
-    $enqueued_handles = [];
-
-    // Enqueue customAnimation in editor preview
-    $custom_anim_file = 'assets/build/modules/animation-builder/frontend/customAnimation.js';
-    if (file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . $custom_anim_file)) {
-      $custom_handle = 'motionkit-custom-animation';
-      wp_enqueue_script(
-        $custom_handle,
-        MOTIONKIT_CONNECTOR_PLUGIN_URL . $custom_anim_file,
-        $deps,
-        MOTIONKIT_CONNECTOR_VERSION,
-        true
-      );
-      $enqueued_handles[] = $custom_handle;
-    }
-
-    $this->enqueue_preset_bundles([], false, $deps, $enqueued_handles);
-
-    $frontend_deps = array_values(array_unique(array_merge($deps, $enqueued_handles)));
-    $this->enqueue_core_frontend([], false, $frontend_deps);
-
-    // Enqueue editor-reset
-    if (file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . 'assets/build/modules/animation-builder/frontend/editor-reset.js')) {
-      wp_enqueue_script(
-        'motionkit-editor-reset',
-        MOTIONKIT_CONNECTOR_PLUGIN_URL . 'assets/build/modules/animation-builder/frontend/editor-reset.js',
-        ['motionkit-frontend'],
-        MOTIONKIT_CONNECTOR_VERSION,
-        true
-      );
-    }
+    // customAnimation.js, the preset bundles, frontend.js and editor-reset.js all come from the editor, which injects its own copies into the proxied snapshot — enqueueing the plugin's copies too would load the engine twice, and two `aae-animation-event` listeners build every step twice. `to`/`fromTo` survive that, but `from` reads its end value off the live DOM, so the second copy samples the value the first already wrote and the element parks partway through.
+    // motionkit-frontend is still registered below, without a file: it carries the motionkitData localization that both the injected runtime and editor-bridge read, and editor-bridge depends on the handle for ordering.
+    $this->enqueue_core_frontend([], false, $deps, true);
 
     // Enqueue editor-bridge
     if (file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . 'assets/build/modules/animation-builder/editor-bridge.js')) {
@@ -956,19 +928,26 @@ final class Frontend
    * @param array $page_configs
    * @param bool  $is_custom
    * @param array $deps
+   * @param bool  $data_only Register the handle without a file, as a carrier for the motionkitData localization only.
    * @return void
    */
-  private function enqueue_core_frontend(array $page_configs, bool $is_custom, array $deps): void
+  private function enqueue_core_frontend(array $page_configs, bool $is_custom, array $deps, bool $data_only = false): void
   {
     $handle = 'motionkit-frontend';
 
-    wp_enqueue_script(
-      $handle,
-      MOTIONKIT_CONNECTOR_PLUGIN_URL . 'assets/build/modules/animation-builder/frontend.js',
-      $deps,
-      MOTIONKIT_CONNECTOR_VERSION,
-      true
-    );
+    if ($data_only) {
+      // wp_enqueue_script() skips wp_scripts()->add() when $src is falsy, leaving the handle unregistered so nothing — not even the localized data — prints. Registering explicitly is what makes this a data-only handle. $deps is kept so the registered GSAP plugin scripts still load.
+      wp_register_script($handle, false, $deps, MOTIONKIT_CONNECTOR_VERSION, true);
+      wp_enqueue_script($handle);
+    } else {
+      wp_enqueue_script(
+        $handle,
+        MOTIONKIT_CONNECTOR_PLUGIN_URL . 'assets/build/modules/animation-builder/frontend.js',
+        $deps,
+        MOTIONKIT_CONNECTOR_VERSION,
+        true
+      );
+    }
 
     $page_type_config = $this->page_type->getCurrentPageType();
 

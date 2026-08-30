@@ -8,7 +8,8 @@ const fs = require("fs");
 const path = require("path");
 
 // Load .env from the connector root so MOTIONKIT_* keys are available via process.env without a dotenv dependency.
-(function loadDotEnv() {
+// Exported as well as self-invoked because webpack.config.js needs MOTIONKIT_DEVTOOLS before it builds the DefinePlugin; re-running is a no-op since existing process.env keys always win.
+function loadDotEnv() {
   const envFile = path.resolve(__dirname, "../.env");
   if (!fs.existsSync(envFile)) return;
   const lines = fs.readFileSync(envFile, "utf8").split(/\r?\n/);
@@ -24,7 +25,9 @@ const path = require("path");
     }
     if (!(key in process.env)) process.env[key] = val;
   }
-})();
+}
+
+loadDotEnv();
 
 // COPY_ITEMS — what gets synced from the connector build to the editor. Each entry is one of:
 //   'rel/path'            → a file OR a folder at the same relative path on both sides (folders copy recursively)
@@ -109,7 +112,7 @@ function copyToEditor({ quiet = false } = {}) {
   return { copied, skipped, dest: DEST_DIR };
 }
 
-module.exports = { copyToEditor };
+module.exports = { copyToEditor, loadDotEnv };
 
 if (require.main === module) {
   copyToEditor({ quiet: false });

@@ -59,7 +59,17 @@ export function imageHoverMagnifier() {
     return String(url).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   }
 
-  function buildLens({ imageUrl, size, ringStyle, zIndex }) {
+  // First non-transparent background going up the tree — what actually paints
+  // behind the image, so the lens backdrop matches it.
+  function resolveBackdrop(target) {
+    for (let n = target; n && n !== document.documentElement; n = n.parentElement) {
+      const bg = window.getComputedStyle(n).backgroundColor;
+      if (bg && !/^(transparent|rgba\(0,\s*0,\s*0,\s*0\))$/.test(bg)) return bg;
+    }
+    return "#ffffff";
+  }
+
+  function buildLens({ imageUrl, size, ringStyle, zIndex, backdrop }) {
     const lens = document.createElement("div");
     lens.setAttribute("data-mk-magnifier", "");
     Object.assign(lens.style, {
@@ -85,6 +95,11 @@ export function imageHoverMagnifier() {
       top: "0",
       left: "0",
       backgroundImage: `url('${escapeCssUrl(imageUrl)}')`,
+      // An image with alpha (logo, cut-out, isometric art) magnifies its
+      // transparent pixels as transparent, and the untouched original sitting
+      // behind the lens shows through them — reading as an un-magnified copy
+      // beside the magnified part. Invisible on a fully opaque image.
+      backgroundColor: backdrop,
       // cover on a box with the same aspect ratio as the original reproduces the
       // base image's own cover crop, just scaled — so object-fit: cover matches.
       backgroundSize: "cover",
@@ -140,7 +155,11 @@ export function imageHoverMagnifier() {
 
     const radius = cfg.size / 2;
     const clip = buildClip({ target, isVoid, zIndex: cfg.zIndex });
-    const { lens, zoomed } = buildLens({ ...cfg, imageUrl });
+    const { lens, zoomed } = buildLens({
+      ...cfg,
+      imageUrl,
+      backdrop: resolveBackdrop(target),
+    });
     clip.appendChild(lens);
     mountEl.appendChild(clip);
     target.setAttribute("data-motionkit-anim-id", id);
@@ -159,8 +178,10 @@ export function imageHoverMagnifier() {
           height: `${target.offsetHeight}px`,
         });
       }
-      zoomed.style.width = `${target.clientWidth * cfg.zoom}px`;
-      zoomed.style.height = `${target.clientHeight * cfg.zoom}px`;
+      // offsetWidth, not clientWidth — the rest of the geometry here measures the
+      // same box that way, and clientWidth drops the border.
+      zoomed.style.width = `${target.offsetWidth * cfg.zoom}px`;
+      zoomed.style.height = `${target.offsetHeight * cfg.zoom}px`;
     }
     syncBox();
 

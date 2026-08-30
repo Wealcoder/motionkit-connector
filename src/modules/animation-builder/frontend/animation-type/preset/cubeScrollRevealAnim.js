@@ -40,8 +40,8 @@ export function cubeScrollRevealAnim() {
     const anim = e?.detail;
     if (!anim || anim.presetKey !== PRESET_KEY) return;
     if (anim.isPublished === false) return;
-    if (!anim.itemClass || !anim.endSectionClass) return;
-
+    if (!anim.itemClass) return;
+    if (!anim.endSectionClass) return;
 
     const {
       id,
@@ -65,7 +65,16 @@ export function cubeScrollRevealAnim() {
       scale,
       cubeAnimStart,
       cubeAnimCStart,
+      revealMode,
     } = vars;
+
+    /*
+      Two modes over the same cube DOM, both pinned with the range measured to
+      endSectionClass:
+        cube-to-face   spin, then expand one face flat
+        cube-to-cube   spin only, cube keeps its size and its six faces
+    */
+    const isSpinOnly = revealMode === "cube-to-cube";
 
     const cubeMinWidthNum = parseFloat(cubeMinWidth) || 0;
     const cubeMaxWidthNum = parseFloat(cubeMaxWidth) || 0;
@@ -181,11 +190,28 @@ export function cubeScrollRevealAnim() {
     scrollContainer.appendChild(scene);
     container.appendChild(scrollContainer);
 
+    // Rotation that brings each face square-on to the viewer.
+    const faceRotations = {
+      front: { rotationY: 0, rotationX: 0 },
+      back: { rotationY: 180, rotationX: 0 },
+      right: { rotationY: -90, rotationX: 0 },
+      left: { rotationY: 90, rotationX: 0 },
+      top: { rotationY: 0, rotationX: -90 },
+      bottom: { rotationY: 0, rotationX: 90 },
+    };
+    const targetRotation = faceRotations[expandFace] || faceRotations.front;
+
+    // The 3/4 view that reads as "a cube". Every mode starts here; cube-to-face leaves it during the spin and lands flat on the target face, the spin-only modes return to it.
+    const CUBE_POSE = { rotationX: -30, rotationY: 45 };
+
     // Scoped styles ──────────────────────────────────────────────────
     const style = document.createElement("style");
     style.textContent = `
       ${itemClass} { margin: 0; padding: 0; box-sizing: border-box; }
-      ${itemClass} .aab_wc-scroll-container { position: relative; z-index: 100; }
+      ${itemClass} .aab_wc-scroll-container {
+        position: relative;
+        z-index: 100;
+      }
       ${itemClass} .aab_wc-scene {
         width: 100%;
         display: flex;
@@ -202,7 +228,7 @@ export function cubeScrollRevealAnim() {
         height: 100%;
         position: relative;
         transform-style: preserve-3d;
-        transform: rotateX(-30deg) rotateY(45deg);
+        transform: rotateX(${CUBE_POSE.rotationX}deg) rotateY(${CUBE_POSE.rotationY}deg);
       }
       ${itemClass} .aab_wc-face {
         position: absolute;
@@ -215,24 +241,12 @@ export function cubeScrollRevealAnim() {
         overflow: hidden;
       }
       ${itemClass} .aab_wc-face img { width: 100%; height: 100%; object-fit: cover; }
-      ${itemClass} .aab_wc-front  { transform: translateZ(${
-        cubeMinWidthNum / 2
-      }px); }
-      ${itemClass} .aab_wc-back   { transform: rotateY(180deg) translateZ(${
-        cubeMinWidthNum / 2
-      }px); }
-      ${itemClass} .aab_wc-right  { transform: rotateY(90deg)  translateZ(${
-        cubeMinWidthNum / 2
-      }px); }
-      ${itemClass} .aab_wc-left   { transform: rotateY(-90deg) translateZ(${
-        cubeMinWidthNum / 2
-      }px); }
-      ${itemClass} .aab_wc-top    { transform: rotateX(90deg)  translateZ(${
-        cubeMinWidthNum / 2
-      }px); }
-      ${itemClass} .aab_wc-bottom { transform: rotateX(-90deg) translateZ(${
-        cubeMinWidthNum / 2
-      }px); }
+      ${itemClass} .aab_wc-front  { transform: translateZ(${cubeMinWidthNum / 2}px); }
+      ${itemClass} .aab_wc-back   { transform: rotateY(180deg) translateZ(${cubeMinWidthNum / 2}px); }
+      ${itemClass} .aab_wc-right  { transform: rotateY(90deg)  translateZ(${cubeMinWidthNum / 2}px); }
+      ${itemClass} .aab_wc-left   { transform: rotateY(-90deg) translateZ(${cubeMinWidthNum / 2}px); }
+      ${itemClass} .aab_wc-top    { transform: rotateX(90deg)  translateZ(${cubeMinWidthNum / 2}px); }
+      ${itemClass} .aab_wc-bottom { transform: rotateX(-90deg) translateZ(${cubeMinWidthNum / 2}px); }
       ${itemClass} .aab_wc-video-player {
         position: absolute;
         top: 0; left: 0;
@@ -284,16 +298,6 @@ export function cubeScrollRevealAnim() {
       ? container.querySelector(`.aab_wc-video[data-face="${expandFace}"]`)
       : null;
 
-    const faceRotations = {
-      front: { rotationY: 0, rotationX: 0 },
-      back: { rotationY: 180, rotationX: 0 },
-      right: { rotationY: -90, rotationX: 0 },
-      left: { rotationY: 90, rotationX: 0 },
-      top: { rotationY: 0, rotationX: -90 },
-      bottom: { rotationY: 0, rotationX: 90 },
-    };
-    const targetRotation = faceRotations[expandFace] || faceRotations.front;
-
     const allFaces = [front, back, right, left, topFace, bottom];
     const faceElements = {
       front,
@@ -309,13 +313,20 @@ export function cubeScrollRevealAnim() {
     // late-loading fonts/images or iframe resizes don't leave us with a
     // stale pin range.
     let endElement = null;
-    try {
-      endElement = document.querySelector(endSectionClass);
-    } catch (err) {
-      console.warn(
-        `[cubeScroll] invalid endSectionClass "${endSectionClass}":`,
-        err.message,
-      );
+    if (endSectionClass) {
+      try {
+        endElement = document.querySelector(endSectionClass);
+      } catch (err) {
+        console.warn(
+          `[cubeScroll] invalid endSectionClass "${endSectionClass}":`,
+          err.message,
+        );
+      }
+      if (!endElement) {
+        console.warn(
+          `[cubeScroll] endSectionClass "${endSectionClass}" matched no element — falling back to 1.5 viewports of scroll.`,
+        );
+      }
     }
 
     const computeEndDistance = () => {
@@ -358,54 +369,72 @@ export function cubeScrollRevealAnim() {
     tl.to(animContainerEl, { scale: scaleNum, duration: 0.6 }, 0);
     tl.to(scene, { x: positionNum, duration: 0.6 }, 0);
 
-    // Spin phase — long-running rotation that keeps the cube tumbling for
-    // most of the pin range (0 → 1.8 of a 2.3s timeline ≈ 78% of scroll),
-    // landing on the target face at the end of the spin.
-    tl.to(
-      cubeEl,
-      {
-        rotationY: targetRotation.rotationY + EXTRA_REVOLUTIONS * 360,
-        rotationX: targetRotation.rotationX,
-        rotate: 0,
-        duration: 1.8,
-        ease: "none",
-      },
-      0,
-    );
+    if (isSpinOnly) {
+      // Spin only. The cube keeps its six faces and its size for the whole range, so there is no expansion phase and nothing to fade. A whole number of revolutions plus the 3/4 resting pose means it ends looking exactly as it started.
+      tl.to(
+        cubeEl,
+        {
+          rotationY: CUBE_POSE.rotationY + (EXTRA_REVOLUTIONS + 1) * 360,
+          rotationX: CUBE_POSE.rotationX,
+          rotate: 0,
+          duration: 2.3,
+          ease: "none",
+        },
+        0,
+      );
+    } else {
+      // Spin phase — long-running rotation that keeps the cube tumbling for
+      // most of the pin range (0 → 1.8 of a 2.3s timeline ≈ 78% of scroll),
+      // landing on the target face at the end of the spin.
+      tl.to(
+        cubeEl,
+        {
+          rotationY: targetRotation.rotationY + EXTRA_REVOLUTIONS * 360,
+          rotationX: targetRotation.rotationX,
+          rotate: 0,
+          duration: 1.8,
+          ease: "none",
+        },
+        0,
+      );
 
-    // Expansion phase — runs in the last ~22% of the pin range (1.8 → 2.3).
-    tl.to(
-      animContainerEl,
-      {
-        width: cubeMaxWidthNum,
-        height: cubeMaxHeightNum,
-        scale: 1,
-        duration: 0.5,
-      },
-      1.8,
-    );
-    tl.to(face, { scale: 0.9, duration: 0.5 }, 1.8);
-    // Other faces fade out together with the expansion so the spin reads as
-    // one continuous motion until the very end.
-    tl.to(facesToHide, { opacity: 0, duration: 0.4 }, 1.85);
+      // Expansion phase — runs in the last ~22% of the pin range (1.8 → 2.3).
+      tl.to(
+        animContainerEl,
+        {
+          width: cubeMaxWidthNum,
+          height: cubeMaxHeightNum,
+          scale: 1,
+          duration: 0.5,
+        },
+        1.8,
+      );
+      tl.to(face, { scale: 0.9, duration: 0.5 }, 1.8);
+      // Other faces fade out together with the expansion so the spin reads as
+      // one continuous motion until the very end.
+      tl.to(facesToHide, { opacity: 0, duration: 0.4 }, 1.85);
+    }
 
     const scrollTriggers = [];
     const cleanups = [];
 
     // Video controls for the expanding face ──────────────────────────
-    if (hasExpandingVideo && video) {
+    // The face is only worth playing once it has flattened and faces the viewer. cube-to-cube never flattens a face, so it gets no autoplay and no control button.
+    const isFaceShowing = () => tl.progress() >= 0.7;
+
+    if (hasExpandingVideo && video && !isSpinOnly) {
       tl.to(controlBtn, { display: "block", duration: 0.1 }, 1.5);
 
       tl.eventCallback("onUpdate", () => {
         if (!video) return;
-        if (tl.progress() >= 0.7 && video.paused) {
+        if (isFaceShowing() && video.paused) {
           video
             .play()
             .catch((err) =>
               console.warn("[cubeScroll] video play failed:", err),
             );
           controlBtn.textContent = "Pause";
-        } else if (tl.progress() < 0.7 && !video.paused) {
+        } else if (!isFaceShowing() && !video.paused) {
           video.pause();
           controlBtn.textContent = "Play";
         }
@@ -417,7 +446,7 @@ export function cubeScrollRevealAnim() {
         end: () => "+=" + computeEndDistance(),
         invalidateOnRefresh: true,
         onEnter: () => {
-          if (tl.progress() >= 0.7 && video) {
+          if (isFaceShowing() && video) {
             video
               .play()
               .catch((err) =>
@@ -427,7 +456,7 @@ export function cubeScrollRevealAnim() {
           }
         },
         onEnterBack: () => {
-          if (tl.progress() >= 0.7 && video) {
+          if (isFaceShowing() && video) {
             video
               .play()
               .catch((err) =>

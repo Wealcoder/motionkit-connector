@@ -3,7 +3,14 @@ const { getWebpackEntryPoints } = require("@wordpress/scripts/utils/config");
 const glob = require("glob");
 const path = require("path");
 const webpack = require("webpack");
-const { copyToEditor } = require("./scripts/copy-to-editor");
+const { copyToEditor, loadDotEnv } = require("./scripts/copy-to-editor");
+
+loadDotEnv();
+
+// customAnimation.js and customRegistry.js gate every DevTools global (__motionkitAnims / __motionkitCustomRegistry / __motionkitDevToolsLoaded) behind this flag, so a false build strips them and the editor's DevTools panel finds nothing to drive. Set MOTIONKIT_DEVTOOLS=true in .env when the build feeds the editor; leave it unset for the shipped plugin.
+const IS_DEVTOOLS = process.env.MOTIONKIT_DEVTOOLS === "true";
+
+console.log(`[motionkit] building with DevTools instrumentation ${IS_DEVTOOLS ? "ON" : "OFF"} (MOTIONKIT_DEVTOOLS)`);
 
 function getPresetEntries({ folder, outPrefix }) {
   const files = glob.sync(`${folder}/*.js`);
@@ -61,7 +68,7 @@ module.exports = {
   plugins: [
     ...defaultConfig.plugins,
     new webpack.DefinePlugin({
-      __MOTIONKIT_DEVTOOLS__: JSON.stringify(false),
+      __MOTIONKIT_DEVTOOLS__: JSON.stringify(IS_DEVTOOLS),
     }),
     copyPlugin,
   ],

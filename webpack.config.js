@@ -1,75 +1,28 @@
 const defaultConfig = require("@wordpress/scripts/config/webpack.config");
 const { getWebpackEntryPoints } = require("@wordpress/scripts/utils/config");
-const glob = require("glob");
 const path = require("path");
-const webpack = require("webpack");
-const { copyToEditor, loadDotEnv } = require("./scripts/copy-to-editor");
 
-loadDotEnv();
+// This repo no longer builds the animation engine. The engine's source lives in the editor repo at `src/lib/motionkit-engine/`, and its `scripts/copy-to-connector.mjs` drops the built bundles into `assets/build/modules/animation-builder/` as vendored artifacts — so the only entry left here is `editor-bridge.js`.
+// One source tree used to emit two different builds (instrumented for the editor, stripped for the plugin), managed by the `__MOTIONKIT_DEVTOOLS__` DefinePlugin flag; when the flag was read the wrong way the editor's DevTools silently found nothing to drive. The editor builds both variants now, so the flag, the DefinePlugin, and the copy-to-editor hook are all gone.
 
-// customAnimation.js and customRegistry.js gate every DevTools global (__motionkitAnims / __motionkitCustomRegistry / __motionkitDevToolsLoaded) behind this flag, so a false build strips them and the editor's DevTools panel finds nothing to drive. Set MOTIONKIT_DEVTOOLS=true in .env when the build feeds the editor; leave it unset for the shipped plugin.
-const IS_DEVTOOLS = process.env.MOTIONKIT_DEVTOOLS === "true";
-
-console.log(`[motionkit] building with DevTools instrumentation ${IS_DEVTOOLS ? "ON" : "OFF"} (MOTIONKIT_DEVTOOLS)`);
-
-function getPresetEntries({ folder, outPrefix }) {
-  const files = glob.sync(`${folder}/*.js`);
-  return files.reduce((entries, file) => {
-    const name = outPrefix + path.basename(file, ".js");
-    entries[name] = path.resolve(file);
-    return entries;
-  }, {});
-}
-
-// Webpack plugin that triggers copyToEditor on watch rebuilds
-const copyPlugin = {
-  apply: (compiler) => {
-    compiler.hooks.afterEmit.tap("MotionKitCopyToEditorPlugin", () => {
-      copyToEditor({ quiet: true });
-    });
-  },
-};
+// wp-scripts' CleanWebpackPlugin wipes all of `assets/build`, so leaving it in place meant every connector build deleted the 36 engine bundles copied in from the editor and shipped a broken plugin. Webpack's own `output.clean` with a keep pattern is used instead: webpack still clears its own stale output but never touches the vendored engine paths.
+const KEEP_VENDORED_ENGINE = /^modules[\\/]animation-builder[\\/]frontend/;
 
 module.exports = {
   ...defaultConfig,
-  resolve: {
-    ...defaultConfig.resolve,
-    alias: {
-      ...(defaultConfig.resolve ? defaultConfig.resolve.alias : {}),
-      "@": path.resolve(__dirname, "src/modules/animation-builder"),
-    },
-  },
+  plugins: (defaultConfig.plugins || []).filter(
+    (plugin) => plugin.constructor.name !== "CleanWebpackPlugin",
+  ),
   entry: () => {
     return {
       ...getWebpackEntryPoints(),
-      "modules/animation-builder/frontend":
-        "./src/modules/animation-builder/frontend.js",
       "modules/animation-builder/editor-bridge":
         "./src/modules/animation-builder/editor-bridge.js",
-      "modules/animation-builder/frontend/editor-reset":
-        "./src/modules/animation-builder/frontend/editor-reset.js",
-      "modules/animation-builder/frontend/customAnimation":
-        "./src/modules/animation-builder/frontend/animation-type/customAnimation.js",
-      ...getPresetEntries({
-        folder:
-          "./src/modules/animation-builder/frontend/animation-type/preset",
-        outPrefix: "modules/animation-builder/frontend/presets/",
-      }),
-      ...getPresetEntries({
-        folder: "./src/modules/animation-builder/frontend/preloader",
-        outPrefix: "modules/animation-builder/frontend/preloader/",
-      }),
     };
   },
   output: {
     path: path.resolve(__dirname, "assets/build"),
     filename: "[name].js",
+    clean: { keep: (asset) => KEEP_VENDORED_ENGINE.test(asset) },
   },
-  plugins: [
-    ...defaultConfig.plugins,
-    new webpack.DefinePlugin({
-      __MOTIONKIT_DEVTOOLS__: JSON.stringify(IS_DEVTOOLS),
-    }),
-    copyPlugin,
-  ],
 };

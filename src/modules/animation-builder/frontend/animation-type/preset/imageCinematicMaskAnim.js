@@ -8,15 +8,14 @@ const IMAGE_SHIFT = 12; // % parallax drift of the image inside the frame
 const FRAME_TRAVEL = 72; // px the frame slides in from
 const TILT = 8; // deg 3D tilt as the frame settles
 
-// Directional clip-path masks. Start states hide the frame from one edge (or
-// pinched-in for centerOut); the timeline reveals to inset(0).
+// Directional clip-path masks. Start states hide the frame from one edge; the
+// timeline reveals to inset(0).
 function directionClip(direction) {
   const clips = {
     topToBottom: "inset(0% 0% 100% 0%)",
     bottomToTop: "inset(100% 0% 0% 0%)",
     leftToRight: "inset(0% 100% 0% 0%)",
     rightToLeft: "inset(0% 0% 0% 100%)",
-    centerOut: "inset(42% 42% 42% 42%)",
   };
   return clips[direction] || clips.bottomToTop;
 }
@@ -104,25 +103,29 @@ export function imageCinematicMaskAnim() {
       }
     });
 
-    inst.elements.forEach(({ containerEl, itemEl, overlay, restorePosition }) => {
-      try {
-        // Remove the injected sweep layer.
-        if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    inst.elements.forEach(
+      ({ containerEl, itemEl, overlay, restorePosition }) => {
+        try {
+          // Remove the injected sweep layer.
+          if (overlay && overlay.parentNode)
+            overlay.parentNode.removeChild(overlay);
 
-        // clip-path / transforms / filter are applied via bare gsap.set() at
-        // time 0, so tl.revert() can't restore them — clear them explicitly.
-        gsap.set(containerEl, {
-          clearProps: "transform,opacity,visibility,clipPath,overflow,perspective",
-        });
-        gsap.set(itemEl, {
-          clearProps: "transform,opacity,visibility,filter,transformOrigin",
-        });
+          // clip-path / transforms / filter are applied via bare gsap.set() at
+          // time 0, so tl.revert() can't restore them — clear them explicitly.
+          gsap.set(containerEl, {
+            clearProps:
+              "transform,opacity,visibility,clipPath,overflow,perspective",
+          });
+          gsap.set(itemEl, {
+            clearProps: "transform,opacity,visibility,filter,transformOrigin",
+          });
 
-        if (restorePosition) containerEl.style.position = "";
-      } catch (err) {
-        console.warn("[imageCinematicMask] element cleanup error:", err);
-      }
-    });
+          if (restorePosition) containerEl.style.position = "";
+        } catch (err) {
+          console.warn("[imageCinematicMask] element cleanup error:", err);
+        }
+      },
+    );
 
     instances.delete(id);
   }
@@ -230,6 +233,26 @@ export function imageCinematicMaskAnim() {
             scrub: triggerType === "play_with_scroll",
           },
         };
+      }
+
+      const isScrollDriven =
+        triggerType === "on_scroll" || triggerType === "play_with_scroll";
+
+      if (isScrollDriven) {
+        gsap.set(containerEl, {
+          ...frameOffset,
+          rotationX: TILT,
+          scale: 0.94,
+          overflow: "hidden",
+          transformPerspective: 1400,
+          clipPath: directionClip(direction),
+        });
+        gsap.set(itemEl, {
+          ...imageOffset,
+          scale: startScale,
+          transformOrigin: "50% 50%",
+          filter: "saturate(0.8) contrast(1.14)",
+        });
       }
 
       const tl = gsap.timeline(tlConfig);

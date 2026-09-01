@@ -87,11 +87,6 @@ return [
       'deps' => ['gsap', 'ScrollTrigger'],
       'version' => MOTIONKIT_CONNECTOR_VERSION,
     ],
-    'motionkit-mk-scroll-parallax-pa' => [
-      'src' => MOTIONKIT_CONNECTOR_PLUGIN_URL . 'assets/build/modules/animation-builder/frontend/presets/scrollParallax.js',
-      'deps' => ['gsap', 'ScrollTrigger'],
-      'version' => MOTIONKIT_CONNECTOR_VERSION,
-    ],
 
     // ############## STICKY ############## //
     'motionkit-mk-sticky-hs-pa' => [

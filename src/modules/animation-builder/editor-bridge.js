@@ -68,6 +68,31 @@ function restUrl(endpoint) {
 }
 
 /**
+ * Build a REST URL with query params.
+ *
+ * The separator has to be chosen per call, not hardcoded: rest_url() is
+ * `/wp-json/motionkit/v1/` under pretty permalinks (no query string at all)
+ * and `?rest_route=/motionkit/v1/` under plain ones. Appending "&s=..." to
+ * the pretty form makes the whole thing a single path segment, so the
+ * request 404s with rest_no_route — and since fetch() does not reject on
+ * 404 and the error body parses as JSON, it fails silently.
+ *
+ * Params that are undefined, null or "" are omitted.
+ */
+function restUrlWithQuery(endpoint, params) {
+  const url = restUrl(endpoint);
+  const query = Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .map(
+      ([key, value]) =>
+        encodeURIComponent(key) + "=" + encodeURIComponent(value),
+    )
+    .join("&");
+  if (!query) return url;
+  return url + (url.includes("?") ? "&" : "?") + query;
+}
+
+/**
  * Extract the motionkit_token (JWT) for editor authentication.
  *
  * Priority:
@@ -340,18 +365,23 @@ function receivePageConfig() {
         const token = getMotionKitToken();
         // Token in query param — keeps the request as a CORS simple GET
         // (no Authorization header, no preflight).
-        const searchUrl =
-          restUrl("pages") +
-          "&s=" +
-          encodeURIComponent(query) +
-          "&page=" +
-          page +
-          "&per_page=" +
-          perPage +
-          (token ? "&token=" + encodeURIComponent(token) : "");
+        const searchUrl = restUrlWithQuery("pages", {
+          s: query,
+          page,
+          per_page: perPage,
+          token,
+        });
 
         fetch(searchUrl)
-          .then((r) => r.json())
+          .then((r) => {
+            // fetch() only rejects on network failure, so without this a 404
+            // or 401 flows into the success branch, `res.data` is not an
+            // array, and the editor just shows "No pages available".
+            if (!r.ok) {
+              throw new Error("page search failed: HTTP " + r.status);
+            }
+            return r.json();
+          })
           .then((res) => {
             window.parent.postMessage(
               {
@@ -366,6 +396,7 @@ function receivePageConfig() {
             );
           })
           .catch((err) => {
+            console.error("MotionKit: page search failed", err);
             window.parent.postMessage(
               {
                 type: "motionkit-page-search-result",

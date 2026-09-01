@@ -193,6 +193,13 @@ export function imageCinematicMaskAnim() {
     // played by listeners on the trigger element(s).
     const isInteraction = triggerType === "click" || triggerType === "hover";
 
+    // `expo.inOut` (the default) holds nearly flat for most of its curve, then
+    // snaps. That reads as elegant on time-driven playback but as broken under
+    // scrub, where the curve maps to scroll distance: most of the user's
+    // scrolling produces no visible change. Swap in a monotonic ease for scrub
+    // only — time-driven triggers keep whatever the author chose.
+    const resolvedEase = triggerType === "play_with_scroll" ? "power2.out" : ease;
+
     items.forEach((itemEl) => {
       const containerEl = itemEl.parentElement;
       if (!containerEl) return;
@@ -225,12 +232,19 @@ export function imageCinematicMaskAnim() {
         // Held at time 0 (the masked start state) until the user interacts.
         tlConfig = { delay, paused: true };
       } else {
+        // Scrubbed playback ties the playhead to scroll distance, so it needs an
+        // explicit `end`. ScrollTrigger's default end sits only a few hundred px
+        // past `start` here, which left the reveal ~98% clipped even at the very
+        // bottom of the range — the animation effectively never played. `bottom
+        // top` gives it the frame's full pass through the viewport.
+        const isScrub = triggerType === "play_with_scroll";
         tlConfig = {
           delay,
           scrollTrigger: {
             trigger: resolvedTriggerClass || containerEl,
             start: resolvedStart,
-            scrub: triggerType === "play_with_scroll",
+            ...(isScrub ? { end: "bottom top" } : {}),
+            scrub: isScrub,
           },
         };
       }
@@ -280,7 +294,7 @@ export function imageCinematicMaskAnim() {
             scale: 1,
             clipPath: "inset(0% 0% 0% 0%)",
             duration,
-            ease,
+            ease: resolvedEase,
           },
           0,
         )

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Plugin Name: MotionKit Connector
+ * Plugin Name: MotionKit Connector Engine Update
  * Plugin URI: https://motionkit.io
  * Description: MotionKit Connector — Animation Engine, REST API, GSAP Enqueue, ScrollSmoother, Page Transition, and Preloader Engine for MotionKit.
  * Version: 1.0.0

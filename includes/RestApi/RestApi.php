@@ -228,7 +228,6 @@ final class RestApi
       'save_global_animation',
       'save_current_page_settings',
       'save_current_page_animation',
-      'save_page_transition_code',
       'save_favourite_cloud_animation',
       'save_animation_folders',
       'delete_global_settings',
@@ -292,33 +291,6 @@ final class RestApi
         );
         update_option('motionkit_page_settings_updated_at', time(), true);
         return new \WP_REST_Response(['success' => true, 'data' => ['msg' => 'page_settings_saved']], 200);
-
-      case 'save_page_transition_code':
-        // This action stores raw JS that is printed on every front-end page.
-        // That is arbitrary-code execution site-wide, so it is gated on the
-        // same capability WordPress uses for unfiltered markup/scripts. A
-        // JWT-only caller (no logged-in user with the cap) is refused — the
-        // editor performs this save while an admin is authenticated.
-        if (!current_user_can('unfiltered_html')) {
-          return new \WP_REST_Response(['success' => false, 'error' => 'forbidden_unfiltered_html'], 403);
-        }
-
-        $code         = isset($payload['code']) && is_string($payload['code']) ? $payload['code'] : '';
-        $preset_key   = isset($payload['presetKey']) ? sanitize_text_field((string) $payload['presetKey']) : '';
-        $preset_label = isset($payload['presetLabel']) ? sanitize_text_field((string) $payload['presetLabel']) : '';
-
-        if ($code === '') {
-          delete_option('motionkit-page-transition-code');
-          return new \WP_REST_Response(['success' => true, 'data' => ['msg' => 'page_transition_cleared']], 200);
-        }
-
-        update_option('motionkit-page-transition-code', [
-          'code'        => $code,
-          'presetKey'   => $preset_key,
-          'presetLabel' => $preset_label,
-          'updated_at'  => time(),
-        ], false);
-        return new \WP_REST_Response(['success' => true, 'data' => ['msg' => 'page_transition_saved']], 200);
 
       case 'save_favourite_cloud_animation':
         $favourite = [];

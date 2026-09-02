@@ -119,7 +119,6 @@ const ENDPOINT_TO_ACTION = {
   "global-animation": "save_global_animation",
   "current-page-settings": "save_current_page_settings",
   "current-page-animation": "save_current_page_animation",
-  "page-transition-exported-code": "save_page_transition_code",
   "animation-folders": "save_animation_folders",
   "favourite-cloud-animation": "save_favourite_cloud_animation",
 };
@@ -445,16 +444,6 @@ function receivePageConfig() {
         );
       }
 
-      if (event.data?.type === "motionkit-page-transition-code") {
-        const { presetKey, presetLabel, code } = event.data.data || {};
-        saveViaRest(
-          "page-transition-exported-code",
-          { code, presetKey, presetLabel },
-          headers,
-          () => {},
-          presetKey,
-        );
-      }
 
       // Share links. Unlike the save messages above, the editor needs the
       // response body back (the minted token), so this posts a dedicated

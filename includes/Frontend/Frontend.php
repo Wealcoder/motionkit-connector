@@ -101,13 +101,6 @@ final class Frontend
   private ScrollSmoother $smoother;
 
   /**
-   * Per-request memo for page-transition option.
-   *
-   * @var array|null|false
-   */
-  private $page_transition_cache = false;
-
-  /**
    * Per-request memo for resolved preloader config.
    *
    * @var array|null|false
@@ -207,36 +200,6 @@ final class Frontend
       return $this->global_settings_cache;
     }
     return $this->global_settings_cache = get_option('motionkit_global_settings', []);
-  }
-
-  /**
-   * Read + validate the page-transition snippet, memoized per request.
-   *
-   * @return array|null Validated stored payload, or null when no snippet is configured.
-   */
-  public function get_page_transition()
-  {
-    if ($this->page_transition_cache !== false) {
-      return $this->page_transition_cache;
-    }
-
-    $stored = get_option('motionkit-page-transition-code');
-    if (is_array($stored) && !empty($stored['code']) && is_string($stored['code']) && strlen(trim($stored['code'])) > 50) {
-      return $this->page_transition_cache = $stored;
-    }
-
-    if (PageTransition::is_enabled()) {
-      $code = PageTransition::generate_runtime_script();
-      if (!empty($code)) {
-        return $this->page_transition_cache = [
-          'code'        => $code,
-          'presetKey'   => 'curtain',
-          'presetLabel' => 'Curtain',
-        ];
-      }
-    }
-
-    return $this->page_transition_cache = null;
   }
 
   /**
@@ -457,7 +420,7 @@ final class Frontend
       return;
     }
 
-    if ($this->get_page_transition() === null) {
+    if ($this->page_transition_config() === null) {
       return;
     }
 
@@ -488,62 +451,93 @@ final class Frontend
       return;
     }
 
-    if (PageTransition::is_enabled() || $this->get_page_transition() !== null) {
-      $this->register_required_script([]);
-      wp_enqueue_script('gsap');
-
-      $stored = $this->get_page_transition();
-      if (is_array($stored) && !empty($stored['code'])) {
-        $code = (string) apply_filters('motionkit/page_transition/code', $stored['code'], $stored);
-        if ('' !== trim($code)) {
-          wp_add_inline_script('gsap', $code, 'after');
-        }
-      }
+    $config = $this->page_transition_config();
+    if ($config === null) {
+      return;
     }
+
+    $bundle = $this->page_transition_bundle($config);
+    if ($bundle === null) {
+      return;
+    }
+
+    $this->register_required_script([]);
+    wp_enqueue_script('gsap');
+
+    // Same shape as the preloader: one bundle carrying the engine plus the single selected transition, and the settings handed over as data on the global the engine reads.
+    // This replaces a generated runtime that was stored in the `motionkit-page-transition-code` option and printed inline. That code was frozen at whatever editor version saved it, so engine fixes never reached a live transition, and when no code was stored a PHP fallback drew a curtain regardless of which preset the user had chosen.
+    wp_enqueue_script(
+      'motionkit-page-transition',
+      MOTIONKIT_CONNECTOR_PLUGIN_URL . $bundle,
+      ['gsap'],
+      MOTIONKIT_CONNECTOR_VERSION,
+      false
+    );
+
+    wp_add_inline_script(
+      'motionkit-page-transition',
+      'window.__MOTIONKIT_PAGE_TRANSITION__=' . wp_json_encode($config) . ';',
+      'before'
+    );
   }
 
   /**
-   * Print page transition inline script in wp_footer
+   * The page-transition settings, or null when it is off or unconfigured.
    *
-   * @return void
+   * `enable` is compared strictly because the engine does the same — a stored
+   * `1` or `"1"` means something wrote the setting without agreeing on the
+   * type, and covering a page on a guess is not a recoverable mistake.
+   *
+   * @return array|null
    */
-  public function print_page_transition_code(): void
+  private function page_transition_config(): ?array
   {
-    if ($this->is_editor_preview() || $this->is_full_preview()) {
-      return;
+    $settings = $this->get_global_settings();
+    $transition = is_array($settings) ? ($settings['pageTransition'] ?? null) : null;
+    if (!is_array($transition)) {
+      return null;
+    }
+    if (($transition['enable'] ?? null) !== true) {
+      return null;
     }
 
-    $stored = $this->get_page_transition();
-    if ($stored === null) {
-      return;
+    // The user-authored transition is selected by `tabs`, not by a preset key — the same shape the preloader already uses. Its data lives at `custom`, so requiring a transitionType here would have made every custom transition silently stop working.
+    if (($transition['tabs'] ?? null) === 'custom') {
+      return is_array($transition['custom'] ?? null) ? $transition : null;
     }
 
-    $code = (string) apply_filters(
-      'motionkit/page_transition/code',
-      $stored['code'],
-      $stored
-    );
-
-    if ('' === trim($code)) {
-      return;
+    $preset = $transition['preset'] ?? null;
+    if (!is_array($preset) || empty($preset['transitionType']) || !is_string($preset['transitionType'])) {
+      return null;
     }
 
-    $label = isset($stored['presetLabel']) ? (string) $stored['presetLabel'] : '';
-    $key   = isset($stored['presetKey']) ? (string) $stored['presetKey'] : '';
-    $tag   = trim($label . ('' !== $key ? " ({$key})" : ''));
-    if ('' === $tag) {
-      $tag = 'custom';
+    return $transition;
+  }
+
+  /**
+   * Bundle path for the selected transition, or null when none is on disk.
+   *
+   * The key IS the filename here, the way it already is for preloaders — which
+   * is why adding a transition needs no PHP edit. The preset bundles cannot do
+   * that because their key and filename are unrelated strings.
+   *
+   * @param array $config
+   * @return string|null
+   */
+  private function page_transition_bundle(array $config): ?string
+  {
+    $dir = 'assets/build/presets/pageTransition/';
+    $key = ($config['tabs'] ?? null) === 'custom'
+      ? 'custom'
+      : $config['preset']['transitionType'];
+
+    if (!preg_match('/^[A-Za-z0-9_-]{1,40}$/', $key)) {
+      return null;
     }
 
-    printf(
-      "\n<!-- MotionKit Page Transition: %s -->\n",
-      esc_html($tag)
-    );
-
-    wp_print_inline_script_tag(
-      $code,
-      ['id' => 'motionkit-page-transition-code']
-    );
+    return file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . $dir . $key . '.js')
+      ? $dir . $key . '.js'
+      : null;
   }
 
   /**
@@ -719,7 +713,7 @@ final class Frontend
         : null;
 
       if ($handle === 'gsap') {
-        $is_pt_active = PageTransition::is_enabled() || ($this->get_page_transition() !== null);
+        $is_pt_active = $this->page_transition_config() !== null;
         $in_footer    = !$is_pt_active; // If page transition is active -> load in <head> (false); otherwise -> load in footer (true)
 
         wp_register_script($handle, $url, $handle_deps, $version, $in_footer);

@@ -11,7 +11,8 @@
 .claude
 
 node_modules
-vendor
+# Anchored to the plugin root on purpose. A bare `vendor` is matched by basename at every depth, so it also swallowed assets/vendor/gsap/ — the 23 committed GSAP files the engine's one hard dependency comes from. The archive then shipped with wp_register_script('gsap', 'assets/vendor/gsap/gsap.min.js') pointing at nothing, and every animation, preloader and page transition silently declined to run.
+/vendor
 scripts
 tests
 

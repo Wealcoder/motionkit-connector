@@ -277,7 +277,7 @@ final class Frontend
    */
   private function preloader_bundle(array $preloader): ?string
   {
-    $dir = 'assets/build/modules/animation-builder/frontend/preloader/';
+    $dir = 'assets/build/presets/preloader/';
 
     $is_custom = isset($preloader['tabs']) && $preloader['tabs'] === 'custom';
     if ($is_custom) {
@@ -792,7 +792,7 @@ final class Frontend
     $enqueued_handles = [];
 
     if ($is_custom || $this->is_full_preview()) {
-      $custom_anim_file = 'assets/build/modules/animation-builder/frontend/customAnimation.js';
+      $custom_anim_file = 'assets/build/engine/customAnimation.js';
       if (file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . $custom_anim_file)) {
         $custom_handle = 'motionkit-custom-animation';
         wp_enqueue_script(
@@ -840,10 +840,10 @@ final class Frontend
     $this->enqueue_core_frontend([], false, $deps, true);
 
     // Enqueue editor-bridge
-    if (file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . 'assets/build/modules/animation-builder/editor-bridge.js')) {
+    if (file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . 'assets/build/modules/editor-bridge.js')) {
       wp_enqueue_script(
         'motionkit-editor-bridge',
-        MOTIONKIT_CONNECTOR_PLUGIN_URL . 'assets/build/modules/animation-builder/editor-bridge.js',
+        MOTIONKIT_CONNECTOR_PLUGIN_URL . 'assets/build/modules/editor-bridge.js',
         ['motionkit-frontend'],
         MOTIONKIT_CONNECTOR_VERSION,
         true
@@ -862,7 +862,7 @@ final class Frontend
    */
   private function enqueue_preset_bundles(array $active_presets, bool $is_custom, array $deps, array &$enqueued_handles = []): void
   {
-    $dir = 'assets/build/modules/animation-builder/frontend/presets/';
+    $dir = 'assets/build/presets/mostPopular/';
     $assets_file = MOTIONKIT_CONNECTOR_PLUGIN_DIR . 'includes/Common/configs/animation-builder-assets.php';
     $asset_map = file_exists($assets_file) ? require $assets_file : [];
     $premium_presets = $asset_map['premiumPresets'] ?? [];
@@ -940,13 +940,32 @@ final class Frontend
       wp_register_script($handle, false, $deps, MOTIONKIT_CONNECTOR_VERSION, true);
       wp_enqueue_script($handle);
     } else {
-      wp_enqueue_script(
-        $handle,
-        MOTIONKIT_CONNECTOR_PLUGIN_URL . 'assets/build/modules/animation-builder/frontend.js',
-        $deps,
-        MOTIONKIT_CONNECTOR_VERSION,
-        true
-      );
+      // Two scripts, deliberately separate. `engine/animationEngine.js` is the vendored engine — the router for both animation kinds plus its public API and is built in the editor repo; `lib/engine-wrapper.js` is this plugin's own source and is the only half that knows what motionkitData means. The wrapper depends on the handle carrying the localization, and the runtime is a dependency of that, so the load order is expressed once here rather than assumed.
+      $runtime_handle = 'motionkit-animation-engine';
+      $runtime_file = 'assets/build/engine/animationEngine.js';
+      if (file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . $runtime_file)) {
+        wp_enqueue_script(
+          $runtime_handle,
+          MOTIONKIT_CONNECTOR_PLUGIN_URL . $runtime_file,
+          $deps,
+          MOTIONKIT_CONNECTOR_VERSION,
+          true
+        );
+      }
+
+      wp_register_script($handle, false, array_merge($deps, [$runtime_handle]), MOTIONKIT_CONNECTOR_VERSION, true);
+      wp_enqueue_script($handle);
+
+      $wrapper_file = 'assets/build/lib/engine-wrapper.js';
+      if (file_exists(MOTIONKIT_CONNECTOR_PLUGIN_DIR . $wrapper_file)) {
+        wp_enqueue_script(
+          'motionkit-engine-wrapper',
+          MOTIONKIT_CONNECTOR_PLUGIN_URL . $wrapper_file,
+          [$handle],
+          MOTIONKIT_CONNECTOR_VERSION,
+          true
+        );
+      }
     }
 
     $page_type_config = $this->page_type->getCurrentPageType();
@@ -1138,10 +1157,24 @@ final class Frontend
   /**
    * Check whether current request is a full preview
    *
+   * The editor sends `motionkit_full_preview=1` — see FullPreviewButton.jsx, and
+   * ScrollSmoother::run_scroll_smoother() has always read that spelling. This
+   * method read `motionkit_preview=full`, which nothing sends, so it answered
+   * false on every real Full Preview: the request took the ordinary visitor
+   * path and enqueued the engine and preset bundles while the editor injected
+   * its own copies into the same page. Two engines, and `from()` tweens sample
+   * the DOM the first copy already wrote, parking the element partway through.
+   * The old spelling is still accepted so any saved or external link keeps
+   * working.
+   *
    * @return bool
    */
   private function is_full_preview(): bool
   {
+    if (isset($_GET['motionkit_full_preview']) && sanitize_text_field(wp_unslash($_GET['motionkit_full_preview'])) === '1') {
+      return true;
+    }
+
     return isset($_GET['motionkit_preview']) && sanitize_text_field(wp_unslash($_GET['motionkit_preview'])) === 'full';
   }
 

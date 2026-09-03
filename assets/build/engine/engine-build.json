@@ -1,0 +1,10 @@
+{
+  "sourceHash": "447fda7a8350c8129d916db3779a4fdf8fc49251a7d85915e1a8ff820febd124",
+  "sourceFileCount": 147,
+  "entries": 50,
+  "target": "connector",
+  "devtools": false,
+  "devLog": false,
+  "gitCommit": "a57412c148b0586324380bd6cca99f31c767dc0a",
+  "builtAt": "2026-09-03T04:36:23.771Z"
+}

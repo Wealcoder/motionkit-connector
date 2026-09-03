@@ -5,6 +5,9 @@ node_modules/
 .sass-cache/
 build/
 
+# The vendored engine is committed on purpose, even though it is build output: this repo cannot build it (the source lives in the editor repo) so an unversioned assets/build means a fresh clone ships a plugin whose animations silently never run. The `build/` rule above matches a directory of that name at any depth, so it has to be re-included by name.
+!assets/build/
+
 log/
 .DS_Store
 .project

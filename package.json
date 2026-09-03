@@ -4,9 +4,8 @@
   "description": "MotionKit Connector — Animation Engine, REST API, GSAP Enqueue, ScrollSmoother, Page Transition, and Preloader Engine",
   "main": "echo \"Nothing much here.\" && exit 1",
   "scripts": {
-    "build": "wp-scripts build && node scripts/copy-to-editor.js",
+    "build": "wp-scripts build",
     "build:wp": "wp-scripts build",
-    "copy-to-editor": "node scripts/copy-to-editor.js",
     "start": "wp-scripts start"
   },
   "devDependencies": {

@@ -12,32 +12,32 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
     exit;
 }
 
-// // ── Options actually written by this plugin ──
-// $mk_options = [
-//     // Activation bookkeeping
-//     'motionkit_extension_version',
-//     'motionkit_extension_creation_date',
-//     // One-shot autoload-migration sentinel (maybe_fix_autoload_flags).
-//     'motionkit_autoload_fixed_v1',
-//     // Settings / animation data
-//     'motionkit_global_settings',
-//     'motionkit_global_animations',
-//     'motionkit-page-transition-code',
-//     'motionkit_animation_folders',
-//     'motionkit_favourite_cloud_animation',
-//     'motionkit_page_settings_updated_at',
-//     // Auth / session secrets
-//     'motionkit_jwt_secret',
-//     'motionkit_used_jtis',
-//     'motionkit_access_token',
-//     'motionkit_connected_at',
-//     'motionkit_connected_email',
-//     'motionkit_license_state',
-//     'motionkit_enc_fallback_key',
-//     // Legacy pre-OAuth connection settings (read by JwtTokenManager::get_secret).
-//     'motionkit_editor_url',
-//     'motionkit_api_key',
-// ];
+// ── Options actually written by this plugin ──
+$mk_options = [
+    // Activation bookkeeping
+    'motionkit_extension_version',
+    'motionkit_extension_creation_date',
+    // One-shot autoload-migration sentinel (maybe_fix_autoload_flags).
+    'motionkit_autoload_fixed_v1',
+    // Settings / animation data — TEMPORARILY DISABLED so deleting the plugin on a test site keeps that site's animations; re-enable before shipping, since wp.org expects an uninstall to remove what the plugin created.
+    // 'motionkit_global_settings',
+    // 'motionkit_global_animations',
+    // 'motionkit-page-transition-code',
+    // 'motionkit_animation_folders',
+    // 'motionkit_favourite_cloud_animation',
+    // 'motionkit_page_settings_updated_at',
+    // Auth / session secrets
+    'motionkit_jwt_secret',
+    'motionkit_used_jtis',
+    'motionkit_access_token',
+    'motionkit_connected_at',
+    'motionkit_connected_email',
+    'motionkit_license_state',
+    'motionkit_enc_fallback_key',
+    // Legacy pre-OAuth connection settings (read by JwtTokenManager::get_secret).
+    'motionkit_editor_url',
+    'motionkit_api_key',
+];
 
 // foreach ($mk_options as $mk_option) {
 //     delete_option($mk_option);
@@ -50,27 +50,30 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 // }
 // wp_clear_scheduled_hook('motionkit_license_refresh');
 
-// // ── Per-page animation/settings meta + option rows ──
-// // Keys are motionkit_pg_animation_<type> / motionkit_pg_settings_<type>.
-// global $wpdb;
+// ── Per-page animation/settings meta + option rows ──
+// Keys are motionkit_pg_animation_<type> / motionkit_pg_settings_<type>.
+// TEMPORARILY DISABLED together with the animation options above — same reason, and they must be re-enabled as one group or a delete would leave half the data behind.
+global $wpdb;
 
-// // Post meta.
+// Post meta.
 // $wpdb->query(
 //     "DELETE FROM {$wpdb->postmeta} WHERE meta_key LIKE 'motionkit\\_pg\\_%'"
 // );
 
-// // Term meta (table may not exist on very old installs).
+// Term meta (table may not exist on very old installs).
 // if (!empty($wpdb->termmeta)) {
 //     $wpdb->query(
 //         "DELETE FROM {$wpdb->termmeta} WHERE meta_key LIKE 'motionkit\\_pg\\_%'"
 //     );
 // }
 
-// // Option-stored page configs (front/archive/404/search) + any transients.
+// Option-stored page configs (front/archive/404/search).
 // $wpdb->query(
 //     "DELETE FROM {$wpdb->options} WHERE option_name LIKE 'motionkit\\_pg\\_%'"
 // );
-// $wpdb->query(
-//     "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_motionkit\\_%'
-//      OR option_name LIKE '\\_transient\\_timeout\\_motionkit\\_%'"
-// );
+
+// Transients are caches, not content — still cleared.
+$wpdb->query(
+    "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_motionkit\\_%'
+     OR option_name LIKE '\\_transient\\_timeout\\_motionkit\\_%'"
+);

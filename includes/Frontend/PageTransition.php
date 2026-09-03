@@ -38,7 +38,8 @@ final class PageTransition
       $pt = (array) $pt;
     }
 
-    return is_array($pt) && !empty($pt['enable']) && false !== filter_var($pt['enable'], FILTER_VALIDATE_BOOLEAN);
+    // Strictly `true`, because pageTransitionEngine/config.js is strict. A looser gate here than in the engine means the cover is painted for a transition that will never run, and there is no timer behind this one to undo it.
+    return is_array($pt) && ($pt['enable'] ?? null) === true;
   }
 
   /**
@@ -56,7 +57,8 @@ final class PageTransition
       $pt = (array) $pt;
     }
 
-    if (!is_array($pt) || empty($pt['enable']) || false === filter_var($pt['enable'], FILTER_VALIDATE_BOOLEAN)) {
+    // See is_enabled(): the same strict comparison, for the same reason.
+    if (!is_array($pt) || ($pt['enable'] ?? null) !== true) {
       return null;
     }
 
@@ -74,8 +76,14 @@ final class PageTransition
 
     $cfg = self::get_config();
     $preset_cfg = $cfg['preset'] ?? [];
-    $curtain = $preset_cfg['curtain'] ?? [];
-    $color = esc_attr($curtain['color'] ?? '#0a0a0a');
+    // The cover exists only to stop a flash of the uncovered page before the engine boots and arrive() sets the real state, so any full-screen fill will do — but it must be the SELECTED preset's colour. This read was hardcoded to `curtain`, so choosing any other transition painted the early cover in a colour from a preset the visitor never sees.
+    // A custom transition has no colour setting — its look comes from the user's own tween vars — so the neutral default is the honest fill here rather than a colour borrowed from a preset the visitor never sees.
+    $key = ($cfg['tabs'] ?? null) === 'custom'
+      ? ''
+      : (is_string($preset_cfg['transitionType'] ?? null) ? $preset_cfg['transitionType'] : '');
+    $selected = ($key !== '' && is_array($preset_cfg[$key] ?? null)) ? $preset_cfg[$key] : [];
+    $fallback = is_array($preset_cfg['curtain'] ?? null) ? $preset_cfg['curtain'] : [];
+    $color = esc_attr($selected['color'] ?? $fallback['color'] ?? '#0a0a0a');
     ?>
     <style id="motionkit-pt-early-style">
       .motionkit-pt-overlay {
@@ -105,206 +113,18 @@ final class PageTransition
     <script id="motionkit-pt-early-script">
       (function () {
         try {
-          if (sessionStorage.getItem('motionkit-pt-arriving') === '1') {
-            document.documentElement.classList.add('motionkit-pt-arriving');
-          }
+          if (sessionStorage.getItem('motionkit-pt-arriving') !== '1') return;
+          var html = document.documentElement;
+          html.classList.add('motionkit-pt-arriving');
+          // The engine drops this class the moment it owns the overlay, so in the normal case the timer never fires. It exists for the case where the engine never boots at all — a 404 on the bundle, a GSAP CDN that never answers — because the rule above is printed !important, and !important is the one thing a CSS animation cannot outrank, so the pure-CSS failsafe pattern the preloader uses is not available here. That leaves this inline script, which is the only JS guaranteed to have run if the class exists at all. Unnetted, the class pins a full-screen pointer-events:auto overlay over the page and no link or button on it can be clicked again.
+          // Firing early is harmless: before the engine boots there is no overlay for the rule to match, and once it boots the overlay's own is-active class carries the cover.
+          setTimeout(function () {
+            html.classList.remove('motionkit-pt-arriving');
+          }, 4000);
         } catch (e) {}
       })();
     </script>
     <?php
   }
 
-  /**
-   * Generate self-installing JS runtime for the active page transition
-   */
-  public static function generate_runtime_script(): string
-  {
-    // 1. Check if explicit custom/exported code was saved
-    $stored = get_option('motionkit-page-transition-code');
-    if (is_array($stored) && !empty($stored['code']) && is_string($stored['code']) && strlen(trim($stored['code'])) > 50) {
-      return $stored['code'];
-    }
-
-    // 2. Otherwise generate dynamically from global settings
-    $cfg = self::get_config();
-    if ($cfg === null) {
-      return '';
-    }
-
-    $preset_cfg = $cfg['preset'] ?? [];
-    $type = $preset_cfg['transitionType'] ?? 'curtain';
-    $curtain = $preset_cfg['curtain'] ?? [];
-
-    $direction = $curtain['direction'] ?? 'up';
-    $color = $curtain['color'] ?? '#0a0a0a';
-    $exit_duration = (float) ($curtain['exitDuration'] ?? 0.75);
-    $exit_ease = $curtain['exitEase'] ?? 'power4.inOut';
-    $enter_duration = (float) ($curtain['enterDuration'] ?? 0.75);
-    $enter_ease = $curtain['enterEase'] ?? 'power4.inOut';
-    $body_effect = $preset_cfg['bodyEffect'] ?? 'none';
-    $body_strength = (float) ($preset_cfg['bodyStrength'] ?? 1.0);
-    $hold_duration = (float) ($preset_cfg['holdDuration'] ?? 0.0);
-
-    return self::build_preset_script([
-      'type'          => $type,
-      'direction'     => $direction,
-      'color'         => $color,
-      'exitDuration'  => $exit_duration > 0 ? $exit_duration : 0.75,
-      'exitEase'      => $exit_ease,
-      'enterDuration' => $enter_duration > 0 ? $enter_duration : 0.75,
-      'enterEase'     => $enter_ease,
-      'bodyEffect'    => $body_effect,
-      'bodyStrength'  => $body_strength,
-      'holdDuration'  => $hold_duration,
-    ]);
-  }
-
-  private static function build_preset_script(array $opts): string
-  {
-    $json = wp_json_encode($opts);
-
-    return <<<JS
-(function () {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  
-  var CONFIG = {$json};
-  var ARRANGE_KEY = 'motionkit-pt-arriving';
-
-  function init() {
-    var overlay = document.querySelector('.motionkit-pt-overlay');
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.className = 'motionkit-pt-overlay';
-      overlay.innerHTML = '<div class="motionkit-pt-panel" style="background:' + (CONFIG.color || '#0a0a0a') + '"></div>';
-      document.body.appendChild(overlay);
-    }
-
-    var panel = overlay.querySelector('.motionkit-pt-panel');
-    var isX = CONFIG.direction === 'left' || CONFIG.direction === 'right';
-    var prop = isX ? 'xPercent' : 'yPercent';
-    var exitFrom = { up: 100, down: -100, left: 100, right: -100 }[CONFIG.direction] || 100;
-    var enterTo = { up: -100, down: 100, left: -100, right: 100 }[CONFIG.direction] || -100;
-
-    // Check if arriving from a transition
-    var arriving = false;
-    try {
-      arriving = sessionStorage.getItem(ARRANGE_KEY) === '1' || document.documentElement.classList.contains('motionkit-pt-arriving');
-      if (arriving) sessionStorage.removeItem(ARRANGE_KEY);
-    } catch (e) {}
-
-    var cleanEarlyState = function () {
-      document.documentElement.classList.remove('motionkit-pt-arriving');
-    };
-
-    if (arriving) {
-      overlay.classList.add('is-active');
-
-      if (typeof gsap !== 'undefined') {
-        gsap.set(panel, { xPercent: 0, yPercent: 0, opacity: 1, force3D: true });
-
-        var startEnter = function () {
-          cleanEarlyState();
-          requestAnimationFrame(function () {
-            requestAnimationFrame(function () {
-              var tweenVars = {
-                duration: Number(CONFIG.enterDuration) || 0.75,
-                ease: CONFIG.enterEase || 'power4.inOut',
-                force3D: true,
-                onComplete: function () {
-                  overlay.classList.remove('is-active');
-                }
-              };
-              tweenVars[prop] = enterTo;
-              gsap.to(panel, tweenVars);
-            });
-          });
-        };
-
-        if (document.readyState === 'complete' || document.readyState === 'interactive') {
-          startEnter();
-        } else {
-          document.addEventListener('DOMContentLoaded', startEnter, { once: true });
-        }
-      } else {
-        cleanEarlyState();
-        overlay.classList.remove('is-active');
-      }
-    } else {
-      cleanEarlyState();
-      overlay.classList.remove('is-active');
-    }
-
-    // Intercept same-origin link clicks
-    document.addEventListener('click', function (e) {
-      if (e.defaultPrevented || e.button !== 0) return;
-      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-
-      var a = e.target && e.target.closest && e.target.closest('a[href]');
-      if (!a) return;
-
-      var href = a.getAttribute('href');
-      if (!href || href.charAt(0) === '#' || href.indexOf('javascript:') === 0 || href.indexOf('mailto:') === 0 || href.indexOf('tel:') === 0) return;
-      if (a.target && a.target !== '' && a.target !== '_self') return;
-      if (a.getAttribute('download') !== null) return;
-
-      var target;
-      try {
-        target = new URL(href, location.href);
-      } catch (err) {
-        return;
-      }
-
-      if (target.origin !== location.origin) return;
-      if (target.pathname === location.pathname && target.search === location.search && target.hash) return;
-      if (target.pathname.indexOf('/wp-admin') !== -1 || target.pathname.indexOf('/wp-login.php') !== -1) return;
-      if (target.search.indexOf('action=motionkit-editor') !== -1) return;
-
-      e.preventDefault();
-      overlay.classList.add('is-active');
-
-      try {
-        sessionStorage.setItem(ARRANGE_KEY, '1');
-      } catch (err) {}
-
-      var navigated = false;
-      var navigate = function () {
-        if (navigated) return;
-        navigated = true;
-        location.assign(target.toString());
-      };
-
-      if (typeof gsap !== 'undefined') {
-        var initialProps = { xPercent: 0, yPercent: 0, opacity: 1, force3D: true };
-        initialProps[prop] = exitFrom;
-        gsap.set(panel, initialProps);
-
-        var tweenVars = {
-          duration: Number(CONFIG.exitDuration) || 0.75,
-          ease: CONFIG.exitEase || 'power4.inOut',
-          force3D: true,
-          onComplete: function () {
-            var hold = Math.max(0, Number(CONFIG.holdDuration) || 0) * 1000;
-            if (hold > 0) setTimeout(navigate, hold);
-            else navigate();
-          }
-        };
-        tweenVars[prop] = 0;
-        gsap.to(panel, tweenVars);
-
-        // Failsafe navigation timeout
-        setTimeout(navigate, (Number(CONFIG.exitDuration || 0.75) + Number(CONFIG.holdDuration || 0) + 0.3) * 1000);
-      } else {
-        navigate();
-      }
-    }, true);
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
-})();
-JS;
-  }
 }

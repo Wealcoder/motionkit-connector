@@ -234,8 +234,6 @@ final class RestApi
       'delete_current_page_settings',
       'get_settings',
       'create_share_link',
-      'revoke_share_link',
-      'list_share_links',
     ];
     if (!in_array($action, $allowed, true)) {
       return new \WP_REST_Response(['success' => false, 'error' => 'unknown_action'], 400);
@@ -378,28 +376,6 @@ final class RestApi
         return new \WP_REST_Response([
           'success' => true,
           'data'    => ['token' => $token, 'param' => ShareLinks::QUERY_PARAM],
-        ], 200);
-
-      case 'revoke_share_link':
-        $page_type_config = $payload['pageTypeConfigs'] ?? [];
-        if (!is_array($page_type_config) || !$this->is_valid_page_type_config($page_type_config)) {
-          return new \WP_REST_Response(['success' => false, 'error' => 'invalid_page_type_config'], 400);
-        }
-        // Revoking is addressed by animation id, not token — tokens are stored hashed, so nobody can name the link they handed out after the fact.
-        $revoked = $this->share_links->revoke_for_animation(
-          $page_type_config,
-          isset($payload['animationId']) && is_string($payload['animationId']) ? $payload['animationId'] : ''
-        );
-        return new \WP_REST_Response(['success' => true, 'data' => ['revoked' => $revoked]], 200);
-
-      case 'list_share_links':
-        $page_type_config = $payload['pageTypeConfigs'] ?? [];
-        if (!is_array($page_type_config) || !$this->is_valid_page_type_config($page_type_config)) {
-          return new \WP_REST_Response(['success' => false, 'error' => 'invalid_page_type_config'], 400);
-        }
-        return new \WP_REST_Response([
-          'success' => true,
-          'data'    => ['links' => $this->share_links->listing($page_type_config)],
         ], 200);
     }
 

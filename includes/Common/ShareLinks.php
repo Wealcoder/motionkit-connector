@@ -173,48 +173,6 @@ final class ShareLinks
   }
 
   /**
-   * Delete every link covering an animation.
-   *
-   * Addressed by animation id rather than by token on purpose: tokens are
-   * stored hashed and are unrecoverable, so a user who closed the tab has no
-   * way to name the link they handed out — but they always know which
-   * animation they stopped wanting to share.
-   *
-   * @param array  $page_type_config Descriptor for the page's animation key.
-   * @param string $animation_id     Animation whose links should be dropped.
-   * @return int Rows removed.
-   */
-  public function revoke_for_animation(array $page_type_config, string $animation_id): int
-  {
-    $ids = $this->clean_ids([$animation_id]);
-    if (empty($ids)) {
-      return 0;
-    }
-    $target = $ids[0];
-
-    $kept = [];
-    $removed = 0;
-
-    foreach ($this->rows($page_type_config) as $row) {
-      $covered = isset($row['animation_ids']) && is_array($row['animation_ids'])
-        ? $row['animation_ids']
-        : [];
-
-      if (in_array($target, $covered, true)) {
-        $removed++;
-        continue;
-      }
-      $kept[] = $row;
-    }
-
-    if ($removed > 0) {
-      $this->save_rows($page_type_config, $kept);
-    }
-
-    return $removed;
-  }
-
-  /**
    * Re-copy every live link's records, and delete the ones with nothing left.
    *
    * Called from the save path, this is both halves of the rule at once. An id
@@ -262,28 +220,6 @@ final class ShareLinks
     }
 
     return $removed;
-  }
-
-  /**
-   * Rows for the editor's popover, without the hashes.
-   *
-   * The raw token is unrecoverable by design, so listing can show what a link
-   * covers and when it was made, but never re-display the link itself.
-   *
-   * @param array $page_type_config Descriptor for the page's animation key.
-   * @return array<int,array{animation_ids: string[], shared_version: string, created_at: int}>
-   */
-  public function listing(array $page_type_config): array
-  {
-    $out = [];
-    foreach ($this->rows($page_type_config) as $row) {
-      $out[] = [
-        'animation_ids'  => isset($row['animation_ids']) && is_array($row['animation_ids']) ? $row['animation_ids'] : [],
-        'shared_version' => isset($row['shared_version']) && is_string($row['shared_version']) ? $row['shared_version'] : '',
-        'created_at'     => isset($row['created_at']) ? (int) $row['created_at'] : 0,
-      ];
-    }
-    return $out;
   }
 
   /**

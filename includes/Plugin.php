@@ -142,6 +142,8 @@ final class Plugin
         add_action('plugins_loaded', [$this, 'init'], 10);
         // One-shot autoload migration — flips legacy option rows that were saved with autoload=no but are read on every frontend request, so they join the alloptions cache instead of triggering a SELECT per page load. Sentinel-guarded to run exactly once per install. Lives here (not the dashboard plugin) because the hot options are this plugin's own.
         add_action('admin_init', [$this, 'maybe_fix_autoload_flags'], 5);
+        // One-shot status rename — the stored word `draft` used to mean "saved but not published" and now means "parked", so records written under the old meaning are relabelled `saved`. Without it every animation a user had saved would go quiet in their editor on update. The REST save dispatcher calls the same guarded method, which is what covers a site whose wp-admin is never opened.
+        add_action('admin_init', [Migrations\StatusSavedMigration::class, 'maybe_run'], 5);
 
         register_activation_hook($this->plugin_file, [$this, 'activate']);
         register_deactivation_hook($this->plugin_file, [$this, 'deactivate']);

@@ -64,26 +64,34 @@ final class AnimationResolver
    * Field carrying an animation's lifecycle state.
    *
    * A boolean could only ever answer "is this live", which left the two
-   * unpublished states — private work, and work someone has been handed a link
-   * to — indistinguishable. The three values below are the actual states.
+   * unpublished states — work parked out of the way, and work in progress the
+   * editor keeps playing — indistinguishable. The three below are the states.
    */
   public const STATUS_FIELD = 'status';
 
   /**
-   * Nobody can see it. Lives in the draft bucket and renders for no request.
+   * Parked. Never live, and the editor leaves it out of playback unless it is
+   * the animation actually open. Shares like anything else.
    */
   public const STATUS_DRAFT = 'draft';
 
   /**
-   * Still not live, but a share link exists — so it renders for a request
-   * carrying that link's token, and for no other.
+   * Saved but not live. Runs in the editor and behind a share link; a visitor
+   * without a token never sees it.
    */
-  public const STATUS_PREVIEW = 'preview';
+  public const STATUS_SAVED = 'saved';
 
   /**
    * Every visitor gets it.
    */
   public const STATUS_PUBLISHED = 'published';
+
+  /**
+   * What the previous model called a record a share link pointed at. It was
+   * never live and it played wherever it was sent, which is what `saved` means
+   * now, so it maps straight across on read.
+   */
+  private const LEGACY_PREVIEW = 'preview';
 
   /**
    * Page type resolver — owns storage routing and the read memo.
@@ -125,90 +133,45 @@ final class AnimationResolver
    * What the editor loads — one list per bucket, working copies re-attached.
    *
    * `shared` is applied here rather than stored: the share row is the only
-   * thing that knows a link exists, so deriving the state from it on read is
-   * what keeps the two from ever disagreeing. Saving the marked-up list back
-   * writes plain `draft` again, which is correct — a save shares nothing.
+   * Both halves in one call, each stitched back into the single list the editor
+   * works with.
    *
-   * @param array    $page_type_config Descriptor from getCurrentPageType().
-   * @param string[] $preview_ids       Ids a live share link currently covers.
+   * @param array $page_type_config Descriptor from getCurrentPageType().
    * @return array{global: array, page: array}
    */
-  public function for_editor(array $page_type_config, array $preview_ids = []): array
+  public function for_editor(array $page_type_config): array
   {
     return [
-      'global' => $this->global_for_editor($preview_ids),
-      'page'   => $this->page_for_editor($page_type_config, $preview_ids),
+      'global' => $this->global_for_editor(),
+      'page'   => $this->page_for_editor($page_type_config),
     ];
   }
 
   /**
    * The global bucket as the editor wants it — the half `get_settings` returns.
    *
-   * @param string[] $preview_ids Ids a live share link currently covers.
    * @return array
    */
-  public function global_for_editor(array $preview_ids = []): array
+  public function global_for_editor(): array
   {
-    return $this->mark_preview(
-      $this->stitch(
-        $this->global_bucket(self::GLOBAL_PUBLISHED_OPTION),
-        $this->global_bucket(self::GLOBAL_DRAFT_OPTION)
-      ),
-      array_flip($preview_ids)
+    return $this->stitch(
+      $this->global_bucket(self::GLOBAL_PUBLISHED_OPTION),
+      $this->global_bucket(self::GLOBAL_DRAFT_OPTION)
     );
   }
 
   /**
    * The page bucket as the editor wants it.
    *
-   * @param array    $page_type_config Descriptor from getCurrentPageType().
-   * @param string[] $preview_ids       Ids a live share link currently covers.
+   * @param array $page_type_config Descriptor from getCurrentPageType().
    * @return array
    */
-  public function page_for_editor(array $page_type_config, array $preview_ids = []): array
+  public function page_for_editor(array $page_type_config): array
   {
-    return $this->mark_preview(
-      $this->stitch(
-        $this->page_bucket($page_type_config),
-        $this->page_bucket($page_type_config, true)
-      ),
-      array_flip($preview_ids)
+    return $this->stitch(
+      $this->page_bucket($page_type_config),
+      $this->page_bucket($page_type_config, true)
     );
-  }
-
-  /**
-   * Promote `draft` to `preview` wherever a live link covers the id.
-   *
-   * Applies to a standalone draft and to a published animation's working copy
-   * alike — in both cases it is the unpublished half the link is showing, so it
-   * is the unpublished half that carries the state.
-   *
-   * @param array             $entries Stitched list.
-   * @param array<string,int> $preview Id set, as returned by array_flip.
-   * @return array
-   */
-  private function mark_preview(array $entries, array $preview): array
-  {
-    if (empty($preview)) {
-      return $entries;
-    }
-
-    foreach ($entries as $i => $entry) {
-      $id = self::entry_id($entry);
-      if ($id === null || !isset($preview[$id])) {
-        continue;
-      }
-
-      if (isset($entry[self::DRAFT_FIELD]) && is_array($entry[self::DRAFT_FIELD])) {
-        $entry[self::DRAFT_FIELD][self::STATUS_FIELD] = self::STATUS_PREVIEW;
-      } elseif (self::status_of($entry) === self::STATUS_DRAFT) {
-        $entry[self::STATUS_FIELD] = self::STATUS_PREVIEW;
-      }
-
-      $entries[$i] = $entry;
-    }
-
-    return $entries;
   }
 
   /**
@@ -234,9 +197,9 @@ final class AnimationResolver
       return $published;
     }
 
-    // Stamped `preview` rather than `published`: the runtime plays both, so the record can go out telling the truth about itself instead of pretending to be live. The permission decision already happened when the token was validated.
+    // Stamped `saved` rather than `published`: the runtime plays both, so the record can go out telling the truth about itself instead of pretending to be live. The permission decision already happened when the token was validated.
     foreach ($overlay as $id => $entry) {
-      $entry = self::with_status($entry, self::STATUS_PREVIEW);
+      $entry = self::with_status($entry, self::STATUS_SAVED);
       $entry['_mkDraft'] = true;
       $overlay[$id] = $entry;
     }
@@ -480,16 +443,21 @@ final class AnimationResolver
     }
 
     $status = $node[self::STATUS_FIELD] ?? null;
-    if ($status === self::STATUS_DRAFT || $status === self::STATUS_PREVIEW || $status === self::STATUS_PUBLISHED) {
+    if ($status === self::STATUS_DRAFT || $status === self::STATUS_SAVED || $status === self::STATUS_PUBLISHED) {
       return $status;
     }
 
-    // A missing flag means published, matching frontend.js — only a literal false unpublishes.
+    if ($status === self::LEGACY_PREVIEW) {
+      return self::STATUS_SAVED;
+    }
+
+    // A missing flag means published, matching the runtime — only a literal false unpublishes.
     if (!array_key_exists('isPublished', $node) || $node['isPublished'] !== false) {
       return self::STATUS_PUBLISHED;
     }
 
-    return self::STATUS_DRAFT;
+    // Resolves to `saved`, not `draft`: an older build's not-live record was ordinary saved work that the editor played, and reading it as parked would silently stop something the user has been seeing.
+    return self::STATUS_SAVED;
   }
 
   /**
@@ -518,16 +486,25 @@ final class AnimationResolver
   /**
    * A record as it belongs in the draft bucket.
    *
-   * Always `draft`, never `preview`: a save shares nothing on its own. Whether a
-   * link exists is the share row's business, and reconcile — which runs on the
-   * same save — is what marks the copy it holds.
+   * Keeps whichever of the two unpublished states the editor sent, and collapses
+   * everything else to `saved`. It used to force `draft` on every record, which
+   * meant the editor's own choice never survived the round trip: an animation
+   * saved as `saved` came back parked, invisible in the editor until republished.
+   *
+   * `published` can never survive into this bucket — a record only reaches here
+   * because it is not live, or because it is the working copy of one that is.
    *
    * @param array $entry
    * @return array
    */
   public static function as_draft(array $entry): array
   {
-    return self::with_status($entry, self::STATUS_DRAFT);
+    $status = self::status_of($entry);
+
+    return self::with_status(
+      $entry,
+      $status === self::STATUS_DRAFT ? self::STATUS_DRAFT : self::STATUS_SAVED
+    );
   }
 
   /**

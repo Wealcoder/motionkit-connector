@@ -764,10 +764,6 @@ final class Frontend
       ? $this->resolver->published($page_type_config)
       : $this->resolver->for_share($page_type_config, $share);
 
-    if ($share !== null) {
-      add_action('wp_footer', [$this, 'print_share_banner'], 99);
-    }
-
     $is_custom = false;
     $global_settings = $this->get_global_settings();
 
@@ -1241,37 +1237,6 @@ final class Frontend
     $token = sanitize_text_field(wp_unslash($_GET[ShareLinks::QUERY_PARAM]));
 
     return $this->share_context_cache = $this->share_links->resolve($page_type_config, $token);
-  }
-
-  /**
-   * Mark the page as a preview so the viewer knows it is not the live site.
-   *
-   * Only printed for a link that actually resolved — a dead token renders the
-   * ordinary page, and labelling that a preview would be a lie.
-   *
-   * @return void
-   */
-  public function print_share_banner(): void
-  {
-    $context = $this->share_context_cache;
-    if (!$context instanceof ShareContext) {
-      return;
-    }
-
-    $version = $context->shared_version();
-    $stamp = '';
-    if ($version !== '') {
-      $time = strtotime($version);
-      if ($time !== false) {
-        $stamp = ' · ' . date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $time);
-      }
-    }
-
-    printf(
-      '<div id="motionkit-share-banner" style="position:fixed;left:0;right:0;bottom:0;z-index:2147483647;padding:8px 14px;font:500 13px/1.4 system-ui,-apple-system,sans-serif;color:#fff;background:#111;text-align:center;pointer-events:none">%s%s</div>',
-      esc_html__('Unpublished preview — visitors still see the published version.', 'motionkit-connector'),
-      esc_html($stamp)
-    );
   }
 
   /**

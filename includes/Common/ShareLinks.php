@@ -103,7 +103,7 @@ final class ShareLinks
    *
    * @param array               $page_type_config Descriptor for the page's animation key.
    * @param array<string,array> $animations       Working copies on the page, keyed by id.
-   * @param string              $shared_version   Version stamp for the reviewer banner.
+   * @param string              $shared_version   Version stamp recorded on the row; nothing renders it today.
    * @return string|null Raw token, or null only when entropy was unavailable.
    */
   public function create(array $page_type_config, array $animations, string $shared_version = ''): ?string
@@ -352,7 +352,7 @@ final class ShareLinks
   }
 
   /**
-   * Newest `updatedAt` across a row's records — what the reviewer's banner dates.
+   * Newest `updatedAt` across a row's records — the row's version stamp.
    *
    * Timestamps are ISO strings from the editor, so a string compare orders them
    * correctly without parsing; a record without one simply does not win.

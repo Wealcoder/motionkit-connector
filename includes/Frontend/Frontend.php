@@ -970,10 +970,7 @@ final class Frontend
 
     // The editor works with one list per bucket, working copies stitched back onto their published records — the same shape it sent on save. A visitor only ever gets the published half.
     if ($this->is_editor_preview()) {
-      $editor_buckets = $this->resolver->for_editor(
-        $page_type_config,
-        $this->share_links->shared_ids($page_type_config)
-      );
+      $editor_buckets = $this->resolver->for_editor($page_type_config);
       $global_animation = $editor_buckets['global'];
       $page_animation = $editor_buckets['page'];
     } else {

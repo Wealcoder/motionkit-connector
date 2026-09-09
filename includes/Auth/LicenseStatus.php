@@ -9,6 +9,8 @@
 
 namespace MotionKitConnector\Auth;
 
+use MotionKitConnector\Common\EditorEndpoint;
+
 // Prevent direct access
 if (!defined('ABSPATH')) {
   exit;
@@ -369,7 +371,7 @@ final class LicenseStatus
 
   private static function get_status_url(): string
   {
-    return apply_filters('motionkit/connect/status_url', 'https://editor.motionkit.io/connect/status');
+    return apply_filters('motionkit/connect/status_url', EditorEndpoint::url('connect/status'));
   }
 
   public static function ensure_cron_scheduled(): void

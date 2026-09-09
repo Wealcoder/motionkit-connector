@@ -51,6 +51,11 @@ define( 'MOTIONKIT_CONNECTOR_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MOTIONKIT_CONNECTOR_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'MOTIONKIT_CONNECTOR_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 
+// The SaaS editor this build talks to — every launch link, connect endpoint, license call and allowed origin derives from it, so this is the only line that names the host. Guarded rather than unconditional so a test site can pin a different editor from wp-config.php without rebuilding, and `motionkit-connector build --dev` rewrites it in its staged copy only. The committed value stays production on every branch, staging included: a branch that carried a different host would put a wrong-environment release one careless merge away.
+if ( ! defined( 'MOTIONKIT_CONNECTOR_EDITOR_ORIGIN' ) ) {
+	define( 'MOTIONKIT_CONNECTOR_EDITOR_ORIGIN', 'https://editor.motionkit.io' );
+}
+
 // Compatibility aliases
 if ( ! defined( 'MOTIONKIT_EXTENSION_VERSION' ) ) {
 	define( 'MOTIONKIT_EXTENSION_VERSION', MOTIONKIT_CONNECTOR_VERSION );

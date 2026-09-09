@@ -30,6 +30,7 @@ if (!defined('ABSPATH')) {
 }
 
 use MotionKitConnector\Auth\JwtTokenManager;
+use MotionKitConnector\Common\EditorEndpoint;
 
 final class PluginRowLinks
 {
@@ -224,7 +225,7 @@ final class PluginRowLinks
             'motionkit_token' => JwtTokenManager::generate($page_url),
         ];
 
-        $base = apply_filters('motionkit/editor/url', 'https://editor.motionkit.io/');
+        $base = apply_filters('motionkit/editor/url', EditorEndpoint::base());
 
         return add_query_arg($query_args, $base);
     }

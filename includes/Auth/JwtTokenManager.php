@@ -9,6 +9,8 @@
 
 namespace MotionKitConnector\Auth;
 
+use MotionKitConnector\Common\EditorEndpoint;
+
 // Prevent direct access
 if (!defined('ABSPATH')) {
   exit;
@@ -43,7 +45,7 @@ final class JwtTokenManager
    */
   public static function generate(string $site_url): string
   {
-    $editor_url = apply_filters('motionkit/editor/url', 'https://editor.motionkit.io/');
+    $editor_url = apply_filters('motionkit/editor/url', EditorEndpoint::base());
     $editor_url = rtrim($editor_url, '/');
 
     $access_token = OAuthHandler::get_access_token();

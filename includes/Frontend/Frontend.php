@@ -364,16 +364,29 @@ final class Frontend
       return;
     }
 
+    // The engine core is its own bundle now instead of being inlined into all seventeen preset
+    // bundles. Two handles: the core, then the one preset, which depends on it so WordPress
+    // prints them in that order.
     wp_enqueue_script(
-      'motionkit-preloader',
-      MOTIONKIT_EXTENSION_PLUGIN_URL . $bundle,
+      'motionkit-preloader-engine',
+      MOTIONKIT_EXTENSION_PLUGIN_URL . 'assets/build/engine/preloaderEngine.js',
       [],
       MOTIONKIT_EXTENSION_VERSION,
       false
     );
 
-    wp_add_inline_script(
+    wp_enqueue_script(
       'motionkit-preloader',
+      MOTIONKIT_EXTENSION_PLUGIN_URL . $bundle,
+      ['motionkit-preloader-engine'],
+      MOTIONKIT_EXTENSION_VERSION,
+      false
+    );
+
+    // Attached to the core so the config is in place before either script runs — the preset is
+    // what actually calls into the engine, and it cannot run before its own dependency.
+    wp_add_inline_script(
+      'motionkit-preloader-engine',
       'window.__MOTIONKIT_PRELOADER__=' . wp_json_encode($preloader) . ';',
       'before'
     );
@@ -464,18 +477,27 @@ final class Frontend
     $this->register_required_script([]);
     wp_enqueue_script('gsap');
 
-    // Same shape as the preloader: one bundle carrying the engine plus the single selected transition, and the settings handed over as data on the global the engine reads.
+    // Same shape as the preloader: the engine core as one bundle, plus the single selected transition, and the settings handed over as data on the global the engine reads.
     // This replaces a generated runtime that was stored in the `motionkit-page-transition-code` option and printed inline. That code was frozen at whatever editor version saved it, so engine fixes never reached a live transition, and when no code was stored a PHP fallback drew a curtain regardless of which preset the user had chosen.
     wp_enqueue_script(
-      'motionkit-page-transition',
-      MOTIONKIT_CONNECTOR_PLUGIN_URL . $bundle,
+      'motionkit-page-transition-engine',
+      MOTIONKIT_CONNECTOR_PLUGIN_URL . 'assets/build/engine/pageTransitionEngine.js',
       ['gsap'],
       MOTIONKIT_CONNECTOR_VERSION,
       false
     );
 
-    wp_add_inline_script(
+    wp_enqueue_script(
       'motionkit-page-transition',
+      MOTIONKIT_CONNECTOR_PLUGIN_URL . $bundle,
+      ['motionkit-page-transition-engine'],
+      MOTIONKIT_CONNECTOR_VERSION,
+      false
+    );
+
+    // Attached to the core so the config is in place before either script runs — the preset is what actually calls into the engine, and it cannot run before its own dependency.
+    wp_add_inline_script(
+      'motionkit-page-transition-engine',
       'window.__MOTIONKIT_PAGE_TRANSITION__=' . wp_json_encode($config) . ';',
       'before'
     );

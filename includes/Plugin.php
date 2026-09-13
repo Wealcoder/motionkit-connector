@@ -22,6 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 use MotionKitConnector\Includes\Autoloader;
+use MotionKitConnector\Common\EditorEndpoint;
 use MotionKitConnector\Factory\ComponentFactory;
 use MotionKitConnector\Frontend\Frontend;
 
@@ -139,9 +140,16 @@ final class Plugin
      */
     private function init_hooks(): void
     {
+        // The main MotionKit plugin is a separate repo with its own build, and its four "Build Animation" / "Launch MotionKit" call sites hardcode the production editor — but every one of them runs the URL through this filter first. Registering it here is what makes a dev connector alone enough to move those buttons: no dev build of the dashboard, and no edit to that repo. Nothing is registered on a production build, so the shipped plugin carries no extra callback.
+        if (!EditorEndpoint::is_default()) {
+            add_filter('motionkit/editor/url', [EditorEndpoint::class, 'retarget']);
+        }
+
         add_action('plugins_loaded', [$this, 'init'], 10);
         // One-shot autoload migration — flips legacy option rows that were saved with autoload=no but are read on every frontend request, so they join the alloptions cache instead of triggering a SELECT per page load. Sentinel-guarded to run exactly once per install. Lives here (not the dashboard plugin) because the hot options are this plugin's own.
         add_action('admin_init', [$this, 'maybe_fix_autoload_flags'], 5);
+        // One-shot status rename — the stored word `draft` used to mean "saved but not published" and now means "parked", so records written under the old meaning are relabelled `saved`. Without it every animation a user had saved would go quiet in their editor on update. The REST save dispatcher calls the same guarded method, which is what covers a site whose wp-admin is never opened.
+        add_action('admin_init', [Migrations\StatusSavedMigration::class, 'maybe_run'], 5);
 
         register_activation_hook($this->plugin_file, [$this, 'activate']);
         register_deactivation_hook($this->plugin_file, [$this, 'deactivate']);

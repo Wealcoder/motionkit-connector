@@ -15,6 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 use MotionKitConnector\Auth\JwtTokenManager;
+use MotionKitConnector\Common\EditorEndpoint;
 
 /**
  * Animation Data Tools (data layer for the dashboard's Tools tab)
@@ -336,7 +337,7 @@ final class AnimationDataTools
   }
 
   /**
-   * Add edit_url (editor.motionkit.io with token) + permalink to each record.
+   * Add edit_url (this build's editor, with token) + permalink to each record.
    */
   private function decorate_record(array $rec, string $token = ''): array
   {
@@ -365,7 +366,7 @@ final class AnimationDataTools
       'platform'        => 'wordpress',
       'motionkit_token' => $token !== '' ? $token : JwtTokenManager::generate($page_url),
     ];
-    $base = apply_filters('motionkit/editor/url', 'https://editor.motionkit.io/');
+    $base = apply_filters('motionkit/editor/url', EditorEndpoint::base());
     return add_query_arg($query_args, $base);
   }
 }

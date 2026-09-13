@@ -23,15 +23,26 @@ if (!defined('ABSPATH')) {
  * framework and a WXR export hook: post_meta already travels with exports,
  * backups and staging pushes, and dies with the page.
  *
- * The token is a random opaque id, not a signed JWT. Signing only buys
- * stateless validation, and this is not stateless — revoking needs a row, and
- * the request is already reading post_meta for the animation data anyway.
+ * The token is DERIVED, not minted: an HMAC of what identifies the page under a
+ * site-wide key. That is what makes the link stable — asking for it twice cannot
+ * produce two URLs, so a link handed out months ago still resolves — and it
+ * means the row holds no secret at all, only the records to render.
+ *
+ * A random token would have had to be stored to be shown again, and storing it
+ * next to the records it unlocks protects nothing; storing only its hash is what
+ * made the link rotate on every visit to the publish popover, quietly breaking
+ * the URL someone had already been sent.
  *
  * A row carries the shared animation records themselves, not a pointer into the
- * draft bucket. That is what lets a draft stay a draft everywhere: the render
- * path for a share link reads only this key, so `motionkit_pg_draft_<type>` is
- * never touched by a front-end request. The copy is refreshed on every save and
- * dies with the row, so publishing takes the link and its data away together.
+ * draft bucket. That is what keeps unpublished storage out of reach of a
+ * front-end request: the render path for a share link reads only this key, so
+ * `motionkit_pg_draft_<type>` is never touched by a visitor, token or not. The
+ * copy is refreshed on every save by `reconcile()`.
+ *
+ * A link belongs to the PAGE, not to a chosen animation, and it does not expire
+ * or retire itself. Publishing everything no longer takes it away — it simply
+ * shows what the live page shows until there is unpublished work again. Parked
+ * drafts are the one thing it never carries.
  */
 final class ShareLinks
 {
@@ -51,9 +62,17 @@ final class ShareLinks
   private const PAGE_PUBLISHED_PREFIX = 'motionkit_pg_animation_';
 
   /**
-   * Token length in bytes before hex encoding — 16 bytes is 128 bits.
+   * Site-wide key the page tokens are derived from. Kept separate from
+   * `motionkit_jwt_secret` so a share link and an editor session never share
+   * key material — one leaking must not be the other leaking.
    */
-  private const TOKEN_BYTES = 16;
+  private const SHARE_SECRET_OPTION = 'motionkit_share_secret';
+
+  /**
+   * Hex characters kept from the derived digest. 22 is 88 bits, which is far
+   * past guessable and short enough to sit in a URL a human will paste.
+   */
+  private const TOKEN_CHARS = 22;
 
   /**
    * Page type resolver — owns storage routing.
@@ -70,68 +89,99 @@ final class ShareLinks
   // ─── Lifecycle ───────────────────────────────────────────────────
 
   /**
-   * Mint a link for one or more animations on a page.
+   * Mint the page's share link.
    *
-   * The records are copied into the row here rather than referenced, so what
-   * the reviewer sees is fixed to what was saved — later edits reach the link
-   * only through `reconcile()`, on the save that writes them.
+   * A link covers the PAGE, not a chosen set of animations: it renders
+   * everything published, with every saved record standing in for its published
+   * version by id. So there is nothing to name at mint time and nothing that can
+   * make minting fail — a page whose work is all published still gets a working
+   * link, it just shows the same thing the live page does.
+   *
+   * The records are copied into the row rather than referenced, which is what
+   * keeps the front-end render path out of `motionkit_pg_draft_*` entirely.
+   * `reconcile()` refreshes the copy on every save.
    *
    * @param array               $page_type_config Descriptor for the page's animation key.
-   * @param string[]            $animation_ids    Ids the link may reveal.
-   * @param array<string,array> $animations       Records to share, keyed by id.
-   * @param string              $shared_version   The record's `updatedAt` at share time.
-   * @return string|null Raw token to hand the user, or null when there was nothing to share.
+   * @param array<string,array> $animations       Working copies on the page, keyed by id.
+   * @param string              $shared_version   Version stamp recorded on the row; nothing renders it today.
+   * @return string|null Raw token, or null only when entropy was unavailable.
    */
-  public function create(array $page_type_config, array $animation_ids, array $animations, string $shared_version = ''): ?string
+  public function create(array $page_type_config, array $animations, string $shared_version = ''): ?string
   {
-    $ids = $this->clean_ids($animation_ids);
-    if (empty($ids)) {
-      return null;
-    }
+    $snapshot = $this->snapshot_for(array_keys($animations), $animations);
+    $existing = $this->rows($page_type_config);
+    $row      = $existing[0] ?? [];
 
-    // An id with no record behind it would be a link that reveals nothing, and reconcile would kill it on the next save anyway — refusing here turns that into an error the editor can explain instead of a link that silently shows the live page.
-    $snapshot = $this->snapshot_for($ids, $animations);
-    if (empty($snapshot)) {
-      return null;
+    // One row per page. A second would only ever be a duplicate of the first, and the token does not vary between them anyway.
+    $row['animation_ids']  = array_keys($snapshot);
+    $row['animations']     = $snapshot;
+    $row['shared_version'] = $shared_version !== '' ? $shared_version : self::version_of($snapshot);
+    $row['created_at']     = $row['created_at'] ?? time();
+    // Expiry is not enforced; storing null now means turning it on later cannot invalidate links already handed out.
+    $row['exp']            = $row['exp'] ?? null;
+
+    $this->save_rows($page_type_config, [$row]);
+
+    return $this->token_for($page_type_config);
+  }
+
+  /**
+   * The page's token — derived, not stored.
+   *
+   * A share link belongs to a page and never rotates, so the token is computed
+   * from what identifies that page under a site-wide key rather than minted and
+   * kept. Three things follow, and they are the whole reason for this shape:
+   * asking for the link twice cannot produce two URLs, nothing secret is written
+   * into the row, and a link handed out months ago still resolves.
+   *
+   * The page's storage descriptor is the identity — `option` already encodes the
+   * page type and `id` the object — so it stays stable across renames and
+   * permalink changes, which a URL would not.
+   *
+   * @param array $page_type_config Descriptor for the page's animation key.
+   * @return string
+   */
+  private function token_for(array $page_type_config): string
+  {
+    $identity = implode('|', [
+      (string) ($page_type_config['store_type'] ?? ''),
+      (string) ($page_type_config['option'] ?? ''),
+      (string) ((int) ($page_type_config['id'] ?? 0)),
+    ]);
+
+    return substr(
+      hash_hmac('sha256', $identity, $this->secret()),
+      0,
+      self::TOKEN_CHARS
+    );
+  }
+
+  /**
+   * The site-wide key, created on first use.
+   *
+   * Rotating this option invalidates every share link on the site at once,
+   * which is the only revocation there is today — a per-page counter folded
+   * into `token_for()` is what would make it per-page later.
+   *
+   * @return string
+   */
+  private function secret(): string
+  {
+    $secret = get_option(self::SHARE_SECRET_OPTION);
+    if (is_string($secret) && strlen($secret) >= 32) {
+      return $secret;
     }
-    $ids = array_keys($snapshot);
 
     try {
-      $token = bin2hex(random_bytes(self::TOKEN_BYTES));
+      $secret = bin2hex(random_bytes(32));
     } catch (\Exception $e) {
-      // random_bytes throws rather than returning weak entropy; a share link is not worth minting from a guessable source.
-      return null;
+      // random_bytes throws rather than returning weak entropy. wp_generate_password draws on the same pool WordPress trusts for its own salts, so it is the right fallback rather than a guessable one.
+      $secret = wp_generate_password(64, true, true);
     }
 
-    // Replace any link already covering exactly this set rather than stacking another row. Reopening the publish popover or re-sharing the same animation is the common case, and every extra row is a live URL nobody is tracking.
-    $signature = $ids;
-    sort($signature);
+    update_option(self::SHARE_SECRET_OPTION, $secret, false);
 
-    $rows = [];
-    foreach ($this->rows($page_type_config) as $row) {
-      $existing = isset($row['animation_ids']) && is_array($row['animation_ids'])
-        ? array_values($row['animation_ids'])
-        : [];
-      sort($existing);
-      if ($existing === $signature) {
-        continue;
-      }
-      $rows[] = $row;
-    }
-
-    $rows[] = [
-      'hash'           => hash('sha256', $token),
-      'animation_ids'  => $ids,
-      'animations'     => $snapshot,
-      'shared_version' => $shared_version !== '' ? $shared_version : self::version_of($snapshot),
-      // Expiry is not enforced yet; storing null now means turning it on later cannot invalidate links already handed out.
-      'exp'            => null,
-      'created_at'     => time(),
-    ];
-
-    $this->save_rows($page_type_config, $rows);
-
-    return $token;
+    return $secret;
   }
 
   /**
@@ -147,14 +197,12 @@ final class ShareLinks
       return null;
     }
 
-    $incoming = hash('sha256', $token);
+    // Recomputed from the page rather than compared against something stored. The row is still required — it carries the records — but it holds no secret, so a row leaking is not a link leaking.
+    $expected = $this->token_for($page_type_config);
     $now = time();
 
     foreach ($this->rows($page_type_config) as $row) {
-      if (!isset($row['hash']) || !is_string($row['hash'])) {
-        continue;
-      }
-      if (!hash_equals($row['hash'], $incoming)) {
+      if (!hash_equals($expected, $token)) {
         continue;
       }
       // Null expiry means never expires — that is today's only case, but the check is here so enabling expiry later needs no render-path change.
@@ -173,79 +221,29 @@ final class ShareLinks
   }
 
   /**
-   * Delete every link covering an animation.
+   * Refresh the page's link with what the page holds now.
    *
-   * Addressed by animation id rather than by token on purpose: tokens are
-   * stored hashed and are unrecoverable, so a user who closed the tab has no
-   * way to name the link they handed out — but they always know which
-   * animation they stopped wanting to share.
-   *
-   * @param array  $page_type_config Descriptor for the page's animation key.
-   * @param string $animation_id     Animation whose links should be dropped.
-   * @return int Rows removed.
-   */
-  public function revoke_for_animation(array $page_type_config, string $animation_id): int
-  {
-    $ids = $this->clean_ids([$animation_id]);
-    if (empty($ids)) {
-      return 0;
-    }
-    $target = $ids[0];
-
-    $kept = [];
-    $removed = 0;
-
-    foreach ($this->rows($page_type_config) as $row) {
-      $covered = isset($row['animation_ids']) && is_array($row['animation_ids'])
-        ? $row['animation_ids']
-        : [];
-
-      if (in_array($target, $covered, true)) {
-        $removed++;
-        continue;
-      }
-      $kept[] = $row;
-    }
-
-    if ($removed > 0) {
-      $this->save_rows($page_type_config, $kept);
-    }
-
-    return $removed;
-  }
-
-  /**
-   * Re-copy every live link's records, and delete the ones with nothing left.
-   *
-   * Called from the save path, this is both halves of the rule at once. An id
-   * that still has a working copy gets its shared record rewritten, so the link
-   * always shows what was last saved. An id that has none — because it was just
-   * published, or deleted — is dropped from the row along with its record, and
-   * a row left with no ids goes with it. One pass covers publish and delete, so
-   * neither needs a hook of its own.
+   * Called from the save path, so the link always shows the last save. An
+   * animation that has since been published or parked simply stops appearing in
+   * the copy, which is enough — the published bucket already covers the first
+   * case and the second is meant to be invisible.
    *
    * @param array               $page_type_config Descriptor for the page's animation key.
-   * @param array<string,array> $live_drafts      Working copies still on the page, keyed by id.
-   * @return int Rows removed.
+   * @param array<string,array> $live_drafts      Working copies on the page, keyed by id.
+   * @return int Rows rewritten.
    */
   public function reconcile(array $page_type_config, array $live_drafts): int
   {
-    $kept = [];
-    $removed = 0;
+    $rows = $this->rows($page_type_config);
+    if (empty($rows)) {
+      return 0;
+    }
+
+    // Rebuilt from what the page holds NOW, not from the ids the row was minted with. A page-wide link is defined by the page, so an animation saved after the link was handed out belongs in it, and one that has since been published or parked drops out on its own.
+    $snapshot = $this->snapshot_for(array_keys($live_drafts), $live_drafts);
     $rewritten = 0;
 
-    foreach ($this->rows($page_type_config) as $row) {
-      $ids = isset($row['animation_ids']) && is_array($row['animation_ids'])
-        ? $this->clean_ids($row['animation_ids'])
-        : [];
-
-      $snapshot = $this->snapshot_for($ids, $live_drafts);
-
-      if (empty($snapshot)) {
-        $removed++;
-        continue;
-      }
-
+    foreach ($rows as $i => $row) {
       $before = $row;
       $row['animation_ids']  = array_keys($snapshot);
       $row['animations']     = $snapshot;
@@ -254,62 +252,15 @@ final class ShareLinks
       if ($row !== $before) {
         $rewritten++;
       }
-      $kept[] = $row;
+      $rows[$i] = $row;
     }
 
-    if ($removed > 0 || $rewritten > 0) {
-      $this->save_rows($page_type_config, $kept);
+    // An emptied snapshot no longer kills the row. Publishing everything used to delete the link along with its copy, which was right when a link meant "review this unpublished change"; a page-wide link outlives that and falls through to the published page on its own.
+    if ($rewritten > 0) {
+      $this->save_rows($page_type_config, $rows);
     }
 
-    return $removed;
-  }
-
-  /**
-   * Rows for the editor's popover, without the hashes.
-   *
-   * The raw token is unrecoverable by design, so listing can show what a link
-   * covers and when it was made, but never re-display the link itself.
-   *
-   * @param array $page_type_config Descriptor for the page's animation key.
-   * @return array<int,array{animation_ids: string[], shared_version: string, created_at: int}>
-   */
-  public function listing(array $page_type_config): array
-  {
-    $out = [];
-    foreach ($this->rows($page_type_config) as $row) {
-      $out[] = [
-        'animation_ids'  => isset($row['animation_ids']) && is_array($row['animation_ids']) ? $row['animation_ids'] : [],
-        'shared_version' => isset($row['shared_version']) && is_string($row['shared_version']) ? $row['shared_version'] : '',
-        'created_at'     => isset($row['created_at']) ? (int) $row['created_at'] : 0,
-      ];
-    }
-    return $out;
-  }
-
-  /**
-   * Every animation id a live link on this page currently covers.
-   *
-   * The editor reads this to tell a private draft from one someone is holding a
-   * link to — the two look identical in storage, and only a row says which.
-   *
-   * @param array $page_type_config Descriptor for the page's animation key.
-   * @return string[]
-   */
-  public function shared_ids(array $page_type_config): array
-  {
-    $ids = [];
-    foreach ($this->rows($page_type_config) as $row) {
-      if (!isset($row['animation_ids']) || !is_array($row['animation_ids'])) {
-        continue;
-      }
-      foreach ($row['animation_ids'] as $id) {
-        if (is_string($id) && $id !== '') {
-          $ids[] = $id;
-        }
-      }
-    }
-
-    return array_values(array_unique($ids));
+    return $rewritten;
   }
 
   // ─── Storage ─────────────────────────────────────────────────────
@@ -371,7 +322,7 @@ final class ShareLinks
    */
   private function looks_like_token(string $token): bool
   {
-    return (bool) preg_match('/^[a-f0-9]{' . (self::TOKEN_BYTES * 2) . '}$/', $token);
+    return (bool) preg_match('/^[a-f0-9]{' . self::TOKEN_CHARS . '}$/', $token);
   }
 
   /**
@@ -385,16 +336,23 @@ final class ShareLinks
   {
     $out = [];
     foreach ($ids as $id) {
-      if (isset($records[$id]) && is_array($records[$id])) {
-        // Stored as `shared`, not `published` — having a link is a state of its own, and this copy must stay unable to render for anyone who is not holding the token.
-        $out[$id] = AnimationResolver::with_status($records[$id], AnimationResolver::STATUS_PREVIEW);
+      if (!isset($records[$id]) || !is_array($records[$id])) {
+        continue;
       }
+
+      // A parked draft is left out. It is the one state a link does not carry — the link shows what is published plus what has been saved on top of it, and parking something is how the author says "not this one yet".
+      if (AnimationResolver::status_of($records[$id]) === AnimationResolver::STATUS_DRAFT) {
+        continue;
+      }
+
+      // Stored as `saved`, never `published` — this copy stands in for the live version only for someone holding the token.
+      $out[$id] = AnimationResolver::with_status($records[$id], AnimationResolver::STATUS_SAVED);
     }
     return $out;
   }
 
   /**
-   * Newest `updatedAt` across a row's records — what the reviewer's banner dates.
+   * Newest `updatedAt` across a row's records — the row's version stamp.
    *
    * Timestamps are ISO strings from the editor, so a string compare orders them
    * correctly without parsing; a record without one simply does not win.

@@ -131,8 +131,6 @@ const ENDPOINT_TO_ACTION = {
  */
 const SHARE_OP_TO_ACTION = {
   create: "create_share_link",
-  revoke: "revoke_share_link",
-  list: "list_share_links",
 };
 
 /**
@@ -451,8 +449,7 @@ function receivePageConfig() {
       // result message rather than a save ack. `requestId` lets the editor
       // pair a result with the call that asked for it.
       if (event.data?.type === "motionkit-share-link") {
-        const { op, animationIds, sharedVersion, animationId } =
-          event.data.data || {};
+        const { op, animationIds, sharedVersion } = event.data.data || {};
         const requestId = event.data.requestId || null;
         // Reply to whoever asked, not to the remembered parent origin — the iframe is same-origin under proxy-snapshot but loads directly on some setups, and a mismatched target silently drops the reply.
         const replyOrigin = event.origin || parentOrigin || "*";
@@ -479,7 +476,6 @@ function receivePageConfig() {
               pageTypeConfigs: motionkitData.pageTypeConfigs,
               animationIds,
               sharedVersion,
-              animationId,
             },
           }),
         })

@@ -9,6 +9,8 @@
 
 namespace MotionKitConnector\Auth;
 
+use MotionKitConnector\Common\EditorEndpoint;
+
 // Prevent direct access
 if (!defined('ABSPATH')) {
   exit;
@@ -29,20 +31,7 @@ if (!defined('ABSPATH')) {
  */
 final class OAuthHandler
 {
-  /**
-   * MotionKit authorize endpoint
-   */
-  private const AUTHORIZE_URL = 'https://editor.motionkit.io/connect/authorize';
-
-  /**
-   * MotionKit token exchange endpoint
-   */
-  private const TOKEN_URL = 'https://editor.motionkit.io/connect/token';
-
-  /**
-   * MotionKit revoke endpoint
-   */
-  private const REVOKE_URL = 'https://editor.motionkit.io/connect/revoke';
+  // The five endpoints below were `private const` literals. A const cannot call EditorEndpoint::url(), and hardcoding the host in each one is what a dev build would have had to rewrite five times over — so they are built here instead, from the single origin the plugin defines. The filters are unchanged; only the default they fall back to now follows the build.
 
   /**
    * Get the authorize URL.
@@ -51,7 +40,7 @@ final class OAuthHandler
    */
   private static function get_authorize_base_url(): string
   {
-    return apply_filters('motionkit/connect/authorize_url', self::AUTHORIZE_URL);
+    return apply_filters('motionkit/connect/authorize_url', EditorEndpoint::url('connect/authorize'));
   }
 
   /**
@@ -61,7 +50,7 @@ final class OAuthHandler
    */
   private static function get_token_url(): string
   {
-    return apply_filters('motionkit/connect/token_url', self::TOKEN_URL);
+    return apply_filters('motionkit/connect/token_url', EditorEndpoint::url('connect/token'));
   }
 
   /**
@@ -71,7 +60,7 @@ final class OAuthHandler
    */
   private static function get_revoke_url(): string
   {
-    return apply_filters('motionkit/connect/revoke_url', self::REVOKE_URL);
+    return apply_filters('motionkit/connect/revoke_url', EditorEndpoint::url('connect/revoke'));
   }
 
   /**
@@ -81,7 +70,7 @@ final class OAuthHandler
    */
   private static function get_validate_url(): string
   {
-    return apply_filters('motionkit/connect/validate_url', 'https://editor.motionkit.io/connect/validate');
+    return apply_filters('motionkit/connect/validate_url', EditorEndpoint::url('connect/validate'));
   }
 
   /**
@@ -91,7 +80,7 @@ final class OAuthHandler
    */
   public static function get_verify_session_url(): string
   {
-    return apply_filters('motionkit/connect/verify_session_url', 'https://editor.motionkit.io/connect/verify-session');
+    return apply_filters('motionkit/connect/verify_session_url', EditorEndpoint::url('connect/verify-session'));
   }
 
   /**

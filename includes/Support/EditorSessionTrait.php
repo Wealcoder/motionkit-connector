@@ -15,6 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 use MotionKitConnector\Auth\OAuthHandler;
+use MotionKitConnector\Common\EditorEndpoint;
 
 trait EditorSessionTrait
 {
@@ -61,7 +62,8 @@ trait EditorSessionTrait
    */
   private function editor_allowed_origins(bool $include_wildcard = false): array
   {
-    $origins = ['https://editor.motionkit.io'];
+    // This build's editor, not production's. A dev build that kept the production origin here would hand the dev editor a CSP frame-ancestors list it is not on, so the preview iframe would come up blank and every REST read would fail CORS.
+    $origins = [EditorEndpoint::origin()];
 
     // Localhost editor origins are for local development of the SaaS editor
     // only. Shipping them to production would let any page a visitor runs on

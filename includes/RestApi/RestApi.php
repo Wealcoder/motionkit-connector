@@ -27,6 +27,7 @@ use MotionKitConnector\Common\AnimationResolver;
 use MotionKitConnector\Common\MotionkitBuilderPageType;
 use MotionKitConnector\Common\ShareLinks;
 use MotionKitConnector\Auth\JwtTokenManager;
+use MotionKitConnector\Migrations\StatusSavedMigration;
 use MotionKitConnector\Support\EditorSessionTrait;
 
 final class RestApi
@@ -223,6 +224,9 @@ final class RestApi
       }
     }
 
+    // Runs before anything is read or written, so the stored `draft` rename cannot land on top of a draft the editor parked deliberately after the update. Sentinel-guarded, so this is one autoloaded option read per request and the sweep happens at most once. Placed after auth on purpose — an unauthenticated request must not be able to trigger a table sweep.
+    StatusSavedMigration::maybe_run();
+
     $allowed = [
       'save_global_settings',
       'save_global_animation',
@@ -234,8 +238,6 @@ final class RestApi
       'delete_current_page_settings',
       'get_settings',
       'create_share_link',
-      'revoke_share_link',
-      'list_share_links',
     ];
     if (!in_array($action, $allowed, true)) {
       return new \WP_REST_Response(['success' => false, 'error' => 'unknown_action'], 400);
@@ -342,18 +344,14 @@ final class RestApi
         return new \WP_REST_Response(['success' => true, 'data' => ['msg' => 'page_config_deleted']], 200);
 
       case 'get_settings':
-        // Share rows live on a page, so which global animations read as shared depends on which page is asking. Without a descriptor the list is still correct, just unable to distinguish a shared draft from a private one.
         $page_type_config = $payload['pageTypeConfigs'] ?? [];
-        $preview_ids = is_array($page_type_config) && $this->is_valid_page_type_config($page_type_config)
-          ? $this->share_links->shared_ids($page_type_config)
-          : [];
 
         return new \WP_REST_Response([
           'success' => true,
           'data'    => [
             'globalSettings'          => get_option('motionkit_global_settings', []),
             // Stitched so the editor gets one list with working copies re-attached, the same shape it sent.
-            'globalAnimation'         => $this->resolver->global_for_editor($preview_ids),
+            'globalAnimation'         => $this->resolver->global_for_editor(),
             'favouriteCloudAnimation' => get_option('motionkit_favourite_cloud_animation', []),
             'animationFolders'        => $this->get_animation_folders(),
           ],
@@ -364,42 +362,19 @@ final class RestApi
         if (!is_array($page_type_config) || !$this->is_valid_page_type_config($page_type_config)) {
           return new \WP_REST_Response(['success' => false, 'error' => 'invalid_page_type_config'], 400);
         }
-        // The records come from storage, not from the request: the editor names ids, the connector decides what those ids currently mean. That keeps a share link unable to publish anything the last save did not already write.
+        // The records come from storage, never from the request — that is what keeps a share link unable to reveal anything the last save did not already write. The request names no ids any more either: a link covers the whole page.
         $token = $this->share_links->create(
           $page_type_config,
-          is_array($payload['animationIds'] ?? null) ? $payload['animationIds'] : [],
           $this->resolver->drafts_by_id($page_type_config),
           isset($payload['sharedVersion']) && is_string($payload['sharedVersion']) ? $payload['sharedVersion'] : ''
         );
         if ($token === null) {
-          return new \WP_REST_Response(['success' => false, 'error' => 'share_link_no_content'], 400);
+          return new \WP_REST_Response(['success' => false, 'error' => 'share_link_failed'], 500);
         }
         // Only the token goes back; the editor already knows the page URL it is editing and builds the link itself, which keeps URL validation out of this handler.
         return new \WP_REST_Response([
           'success' => true,
           'data'    => ['token' => $token, 'param' => ShareLinks::QUERY_PARAM],
-        ], 200);
-
-      case 'revoke_share_link':
-        $page_type_config = $payload['pageTypeConfigs'] ?? [];
-        if (!is_array($page_type_config) || !$this->is_valid_page_type_config($page_type_config)) {
-          return new \WP_REST_Response(['success' => false, 'error' => 'invalid_page_type_config'], 400);
-        }
-        // Revoking is addressed by animation id, not token — tokens are stored hashed, so nobody can name the link they handed out after the fact.
-        $revoked = $this->share_links->revoke_for_animation(
-          $page_type_config,
-          isset($payload['animationId']) && is_string($payload['animationId']) ? $payload['animationId'] : ''
-        );
-        return new \WP_REST_Response(['success' => true, 'data' => ['revoked' => $revoked]], 200);
-
-      case 'list_share_links':
-        $page_type_config = $payload['pageTypeConfigs'] ?? [];
-        if (!is_array($page_type_config) || !$this->is_valid_page_type_config($page_type_config)) {
-          return new \WP_REST_Response(['success' => false, 'error' => 'invalid_page_type_config'], 400);
-        }
-        return new \WP_REST_Response([
-          'success' => true,
-          'data'    => ['links' => $this->share_links->listing($page_type_config)],
         ], 200);
     }
 

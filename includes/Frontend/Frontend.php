@@ -171,6 +171,7 @@ final class Frontend
 
     // Frontend script enqueue & head output — only on actual page loads
     if (!is_admin()) {
+      add_action('wp_head', ['\\MotionKitConnector\\Frontend\\PageTransition', 'print_head_view_transition'], 0);
       add_action('wp_head', ['\\MotionKitConnector\\Frontend\\PageTransition', 'print_head_early_cover'], 0);
       add_action('wp_enqueue_scripts', [$this, 'enqueue_page_transition'], 2);
       add_action('wp_enqueue_scripts', [$this, 'enqueue_preloader'], 5);

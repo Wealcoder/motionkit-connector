@@ -66,6 +66,44 @@ final class PageTransition
   }
 
   /**
+   * Opt this document into cross-document view transitions, and tell the engine it did.
+   *
+   * The at-rule is printed rather than injected from JS because a browser has to know a document
+   * takes part in cross-document transitions while it is still parsing — for the page being left as
+   * much as the one arriving. A stylesheet inserted later is not a promise the browser can keep.
+   *
+   * The flag is the other half of the same statement. Browser support alone is not enough to switch
+   * the engine onto the view-transition path: without this at-rule there is no transition to drive,
+   * and an engine that had already stood its click handler down would leave the site with no page
+   * transition at all. Whoever prints the opt-in prints the flag, so the two cannot disagree.
+   *
+   * A browser with no support ignores both the at-rule and — because the engine checks
+   * document.startViewTransition too — the flag, and runs the classic two-document path instead.
+   */
+  public static function print_head_view_transition(): void
+  {
+    if (!self::is_enabled()) {
+      return;
+    }
+    ?>
+    <style id="motionkit-pt-view-transition">
+      @view-transition {
+        navigation: auto;
+      }
+      /* The browser's default root cross-fade, off. It travels with the at-rule rather than being injected by the engine because it has to hold even when the engine never boots — a missing GSAP or a refused config would otherwise leave the opt-in live with nothing driving it, and every navigation on the site would grow a fade nobody asked for. With it, a bailed engine means no animation at all, which is what a site without this feature already does. The engine adds the rules for its own overlay group on top; see injectViewTransitionCss in pageTransitionEngine/dom.js. */
+      ::view-transition-old(root),
+      ::view-transition-new(root) {
+        animation: none;
+        mix-blend-mode: normal;
+      }
+    </style>
+    <script id="motionkit-pt-view-transition-flag">
+      window.__MOTIONKIT_PT_VIEW_TRANSITION__ = true;
+    </script>
+    <?php
+  }
+
+  /**
    * Print instant anti-flicker early check in <head>
    */
   public static function print_head_early_cover(): void

@@ -103,7 +103,7 @@ final class DependencyInstaller
      * still overrides this, and an empty string here would fall through to the
      * wordpress.org lookup — so this is the "our server" source of truth.
      */
-    private const DEFAULT_MAIN_DOWNLOAD_URL = 'https://github.com/Wealcoder/motionkit/releases/download/latest/motionkit-connector.zip';
+    private const DEFAULT_MAIN_DOWNLOAD_URL = 'https://github.com/Wealcoder/motionkit/releases/download/latest/motionkit.zip';
 
     /**
      * Register admin hooks. Called once from Plugin::init() on every load.

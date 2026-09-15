@@ -105,6 +105,59 @@ Two consequences worth knowing before changing a number:
 - **Never edit, commit, or push `main` directly.** Work on a feature branch.
 - Comments state the non-obvious *reason*, not what the code already says.
 
+## Rule 6 — The OAuth callback params are namespaced
+
+The connect callback lands on `admin.php?page=motionkit-connect`, and a bare
+`code` + `state` pair on a wp-admin URL is **not ours alone**. Other plugins
+treat any admin request carrying that pair as their own OAuth callback. CrawlWP
+SEO (`mihdan-index-now`) is the one that bit us: its
+`YandexWebmaster::get_api_token()` runs on `admin_init` at priority 10 —
+registered *before* its own `is_enabled()` early-return, so merely activating
+the plugin arms it — and does
+
+```php
+if (isset($_GET['code'], $_GET['state']) && check_admin_referer('yandex_oauth_nonce', 'state') && ...)
+```
+
+`check_admin_referer()` does not return false, it `wp_die()`s. Our `state` is
+`bin2hex(random_bytes(32))`, never a WP nonce, so every connect attempt died on
+**"The link you followed has expired."** before `handle_callback()` ran.
+
+Two defences, both in `includes/Auth/OAuthHandler.php`. Keep both — they fail
+independently:
+
+1. **`handle_callback` is hooked at `admin_init` priority 1**, not the default
+   10. Priority beats plugin load order, so we consume the params and `exit` on
+   the redirect before any later listener sees them.
+2. **The params are namespaced**: the callback is answered with
+   `motionkit_code` / `motionkit_state`, which no other plugin sniffs.
+
+### The dialect handshake
+
+`get_authorize_url()` sends **both** `state` and `motionkit_state` (same token).
+The editor echoes back in whichever dialect it was asked in — namespaced when
+`motionkit_state` was present, bare otherwise. `read_callback_param()` reads
+namespaced first and falls back to bare.
+
+That makes the two repos deployable in **either order**, which matters because
+customers update the plugin on their own schedule:
+
+| Connector | Editor | Callback | Works |
+|---|---|---|---|
+| new | new | `motionkit_code` + `motionkit_state` | ✅ no collision |
+| new | old | `code` + `state` | ✅ via the bare fallback + priority 1 |
+| old | new | `code` + `state` | ✅ editor answers in the old dialect |
+
+**Do not drop the bare `state` from the authorize URL** until every shipped
+connector sends `motionkit_state` — an editor that predates the rename reads
+`state` only, and would refuse the request as "Missing required parameters".
+
+The editor side is `src/pages/connect/AuthorizePage.jsx` (reads the dialect,
+writes the callback) and `src/pages/connect/CallbackPage.jsx` (diagnostic
+fallback) in the `motionkit-editor` repo. The server never sees these names —
+`/connect/authorize` and `/connect/token` carry `state` and `code` in a JSON
+**body**, so no server change was needed.
+
 ## Key files
 
 | Path | Responsibility |

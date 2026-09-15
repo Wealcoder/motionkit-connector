@@ -5,10 +5,6 @@
  * See LICENSE.txt. Abuse: legal@motionkit.io
  */
 
-// The WordPress side of the engine contract. This file is the plugin's own source and is compiled by the plugin's own webpack; the engine it drives is a vendored artifact built in the editor repo and dropped into assets/build/engine/.
-// It lives here rather than in the editor because everything it does is adapter work: knowing that the animations arrive on `window.motionkitData`, that Frontend.php emits nine values under both a snake_case and a camelCase name, and that a visitor page dispatches exactly once. The engine knows none of that and must not.
-// It reaches the engine through `window.MotionKitEngine`, the API assets/build/engine/animationEngine.js installs. Every decision about what the data MEANS — which device bucket wins, which records are playable, how a per-device bag flattens onto `vars` — stays behind that call, because a wrapper that reimplemented any of it would drift from the editor and the same animation would behave differently in the two places.
-
 /**
  * Reads the settings bag the engine's resolver expects.
  *

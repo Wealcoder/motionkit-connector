@@ -98,6 +98,12 @@ final class OAuthHandler
    */
   public function init(): void
   {
+    // The OAuth FLOW belongs to the free plugin: it owns the Connect page, ConnectPage::authorize_url() prefers its handler, and the state token lives in its motionkit_oauth_state option. Both plugins used to hook these, and whichever ran first answered — the connector, finding nothing in its own transient, redirected with error=invalid_state and exited before the handler holding the state could run. Registering nothing here leaves exactly one callback for one state store.
+    if (class_exists('\MotionKit\Auth\OAuthHandler')) {
+      return;
+    }
+
+    // Standalone connector (free plugin not installed) still needs its own flow.
     add_action('admin_init', [$this, 'handle_callback']);
     add_action('admin_init', [$this, 'handle_disconnect']);
     add_action('admin_init', [$this, 'handle_verify']);
@@ -192,7 +198,13 @@ final class OAuthHandler
     $state = sanitize_text_field(wp_unslash($_GET['state']));
 
     $stored_state = get_transient(self::OPT_STATE_TOKEN);
-    if (!$stored_state || !hash_equals($stored_state, $state)) {
+
+    // No stored state means this connect was not started by us — the free plugin owns the Connect page and ConnectPage::authorize_url() prefers its handler, which keeps its state in the motionkit_oauth_state OPTION rather than this transient. Both callbacks fire on the same page+code+state, so answering here would redirect with error=invalid_state and exit before the handler that actually holds the state ever runs. Stand down instead and let it answer.
+    if (!$stored_state) {
+      return;
+    }
+
+    if (!hash_equals($stored_state, $state)) {
       wp_safe_redirect(wp_nonce_url(
         admin_url('admin.php?page=motionkit-connect&tab=connect&error=invalid_state'),
         'motionkit_notice'

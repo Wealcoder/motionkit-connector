@@ -167,11 +167,11 @@ class MotionkitBuilderPageType
     switch ($store_type) {
       case 'post_meta':
         if ($id > 0) {
-          $val = get_post_meta($id, $option_key, true);
-          if (!empty($val)) {
-            $result = $val;
+          // metadata_exists(), not !empty(): a page whose animations were all deleted stores an EMPTY array, and empty() cannot tell that apart from never having been saved. The legacy fallback below then served the pre-delete option row, so every deleted animation came back on reload while the editor — which reads what it just wrote — showed it gone.
+          if (metadata_exists('post', $id, $option_key)) {
+            $result = get_post_meta($id, $option_key, true);
           } else {
-            // Fallback to option if post meta not set
+            // Legacy slot: sites that stored page animations in an option before the per-post key existed. Only consulted when this post has no row of its own.
             $fallback = get_option($option_key, []);
             if (!empty($fallback)) {
               $result = $fallback;
@@ -184,8 +184,9 @@ class MotionkitBuilderPageType
 
       case 'term_meta':
         if ($id > 0) {
-          $val = get_term_meta($id, $option_key, true);
-          $result = !empty($val) ? $val : get_option($option_key, []);
+          $result = metadata_exists('term', $id, $option_key)
+            ? get_term_meta($id, $option_key, true)
+            : get_option($option_key, []);
         } else {
           $result = get_option($option_key, []);
         }

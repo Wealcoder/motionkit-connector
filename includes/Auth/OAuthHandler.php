@@ -91,6 +91,9 @@ final class OAuthHandler
   private const OPT_CONNECTED_EMAIL = 'motionkit_connected_email';
   private const OPT_STATE_TOKEN = 'motionkit_oauth_state';
 
+  // The state is an option rather than a transient because a persistent object cache (Redis) can evict a transient well before its TTL — on a shared, near-full Redis under allkeys-lru that happens in seconds. The state then vanished mid-flow with no trace in the database, no handler owned the callback, and the user got WordPress's "The link you followed has expired." An option is a real row, so only the expiry below removes it.
+  private const STATE_TTL = 600;
+
   /**
    * Initialize OAuth hooks
    *
@@ -157,7 +160,7 @@ final class OAuthHandler
   public function get_authorize_url(bool $switch_account = false): string
   {
     $state = bin2hex(random_bytes(32));
-    set_transient(self::OPT_STATE_TOKEN, $state, 600);
+    self::store_state($state);
 
     $params = [
       'state'         => $state,
@@ -171,6 +174,42 @@ final class OAuthHandler
     }
 
     return add_query_arg($params, self::get_authorize_base_url());
+  }
+
+  // Stored with its own expiry because an option has none of its own. autoload=false: this is read only during the seconds-long callback, never on a normal page load.
+  private static function store_state(string $state): void
+  {
+    update_option(self::OPT_STATE_TOKEN, [
+      'state'      => $state,
+      'expires_at' => time() + self::STATE_TTL,
+    ], false);
+  }
+
+  // Returns '' for missing, malformed, or expired state, so every caller sees one "no usable state" answer. An expired row is deleted on read rather than left to accumulate.
+  private static function read_state(): string
+  {
+    $stored = get_option(self::OPT_STATE_TOKEN, '');
+
+    // A plain string is a state written by an older build that used a transient, or by the free plugin, which stores the bare value. Honour it rather than failing a connect that is already in flight across an upgrade.
+    if (is_string($stored) && $stored !== '') {
+      return $stored;
+    }
+
+    if (!is_array($stored) || empty($stored['state'])) {
+      return '';
+    }
+
+    if (isset($stored['expires_at']) && time() > (int) $stored['expires_at']) {
+      self::clear_state();
+      return '';
+    }
+
+    return (string) $stored['state'];
+  }
+
+  private static function clear_state(): void
+  {
+    delete_option(self::OPT_STATE_TOKEN);
   }
 
   private function get_callback_url(): string
@@ -197,11 +236,15 @@ final class OAuthHandler
     $code = sanitize_text_field(wp_unslash($_GET['code']));
     $state = sanitize_text_field(wp_unslash($_GET['state']));
 
-    $stored_state = get_transient(self::OPT_STATE_TOKEN);
+    $stored_state = self::read_state();
 
-    // No stored state means this connect was not started by us — the free plugin owns the Connect page and ConnectPage::authorize_url() prefers its handler, which keeps its state in the motionkit_oauth_state OPTION rather than this transient. Both callbacks fire on the same page+code+state, so answering here would redirect with error=invalid_state and exit before the handler that actually holds the state ever runs. Stand down instead and let it answer.
+    // No stored state. init() only registers this callback when the free plugin is absent, so there is no other handler to defer to — the transient simply expired (600s) or was dropped by an object cache. Returning here let the request fall through to a bare page render, which WordPress answers with "The link you followed has expired."; redirect with the real reason so the Connect tab can tell the user to retry.
     if (!$stored_state) {
-      return;
+      wp_safe_redirect(wp_nonce_url(
+        admin_url('admin.php?page=motionkit-connect&tab=connect&error=invalid_state'),
+        'motionkit_notice'
+      ));
+      exit;
     }
 
     if (!hash_equals($stored_state, $state)) {
@@ -212,7 +255,7 @@ final class OAuthHandler
       exit;
     }
 
-    delete_transient(self::OPT_STATE_TOKEN);
+    self::clear_state();
 
     $result = $this->exchange_code_for_token($code);
 

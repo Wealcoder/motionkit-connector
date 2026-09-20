@@ -29,6 +29,8 @@ $mk_options = [
     // Auth / session secrets
     'motionkit_jwt_secret',
     'motionkit_used_jtis',
+    // OAuth state is an option (not a transient) so a Redis eviction cannot drop it mid-flow; the transient sweep at the bottom no longer covers it.
+    'motionkit_oauth_state',
     'motionkit_access_token',
     'motionkit_connected_at',
     'motionkit_connected_email',

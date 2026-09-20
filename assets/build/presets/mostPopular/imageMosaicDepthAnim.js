@@ -1,1 +1,637 @@
-(()=>{var D="__motionkitPresetHandlers";function ue(){return typeof window=="undefined"?new Map:(window[D]||(window[D]=new Map),window[D])}function K(e,t){if(!e||typeof t!="function")return;let n=ue();if(n.has(e))return;let o=t()||{};n.set(e,{key:e,run:typeof o.run=="function"?o.run:function(){},teardown:typeof o.teardown=="function"?o.teardown:function(){}})}var m={DRAFT:"draft",SAVED:"saved",PUBLISHED:"published"},le=[m.DRAFT,m.SAVED,m.PUBLISHED],ae="preview";function fe(e){return!e||typeof e!="object"?m.PUBLISHED:le.indexOf(e.status)!==-1?e.status:e.status===ae||e.isPublished===!1?m.SAVED:m.PUBLISHED}function U(e){return fe(e)!==m.DRAFT}function de(){return typeof window=="undefined"?{}:window.__motionkitHostData||window.motionkitData||{}}function W(){return de().motionkit_token||null}var F=()=>typeof window=="undefined"?!1:window.location.search.includes("action=motionkit-editor")?!0:!!W();var C="__motionkitOwnership";function x(){let e=typeof window!="undefined"?window:globalThis;return e[C]||(e[C]={ownerByEl:new WeakMap,elsByAnim:new Map,animsByAnim:new Map,resetByAnim:new Map}),e[C]}x();function Y(e,t){e&&x().animsByAnim.set(e,t||[])}function z(e,t){!e||typeof t!="function"||x().resetByAnim.set(e,t)}function pe(e,t,n){let o=e.elsByAnim.get(t);o||(o=new Set,e.elsByAnim.set(t,o)),o.add(n)}function M(e,t){if(!t||!e||!e.length)return!1;let n=x(),o=new Map;return e.forEach(r=>{var i;if(!r)return;let c=n.ownerByEl.get(r);c&&c!==t&&(o.has(c)||o.set(c,[]),o.get(c).push(r)),n.ownerByEl.set(r,t),pe(n,t,r),(i=r.setAttribute)==null||i.call(r,"data-motionkit-anim-id",t)}),o.size?(o.forEach((r,c)=>{(n.animsByAnim.get(c)||[]).forEach(u=>{var s;try{(s=u.pause)==null||s.call(u)}catch(l){}});let i=n.resetByAnim.get(c);if(i)try{i(r)}catch(u){console.warn("[motionkit] ownership reset error:",u)}}),!0):!1}function G(e){let t=x(),n=t.elsByAnim.get(e);n&&(n.forEach(o=>{t.ownerByEl.get(o)===e&&t.ownerByEl.delete(o)}),t.elsByAnim.delete(e)),t.animsByAnim.delete(e),t.resetByAnim.delete(e)}var R="__motionkitScreen";function V(e){let t=e||(typeof window!="undefined"?window:null);return t?(t[R]||(t[R]={held:!1,queue:[],deadline:12e3}),t[R]):{held:!1,queue:[],deadline:12e3}}function I(e){try{e()}catch(t){console.error("[motionkit] a screen-release waiter threw",t)}}function j(e){return V(e).held===!0}function X(e,t){let n=V(e);if(!n.held){I(t);return}let o=!1,r=()=>{o||(o=!0,I(t))};n.queue.push(r);let c=e||window;c&&typeof c.setTimeout=="function"&&c.setTimeout(r,n.deadline+400)}var $="__motionkitSplits",J="__no_owner__";function P(){let e=typeof window!="undefined"?window:globalThis;return e[$]||(e[$]={bySig:new Map,elKeys:new WeakMap,seq:0}),e[$]}function he(e){if(typeof e=="string")return e;if(!e||e.nodeType!==1)return String(e);let t=P(),n=t.elKeys.get(e);return n||(t.seq+=1,n=`__el${t.seq}`,t.elKeys.set(e,n)),n}function ge(e,t){return`${he(e)}::${JSON.stringify(t||{})}`}function we(e,t){if(typeof SplitText=="undefined")return null;try{return typeof SplitText.create=="function"?SplitText.create(e,t):new SplitText(e,t)}catch(n){return console.warn("[motionkit] SplitText failed for",e,n),null}}function ye(e){var t,n;try{(n=(t=e.split)==null?void 0:t.revert)==null||n.call(t)}catch(o){}}function Q(e,t,n){if(!t)return null;let o=e||J,r=P(),c=ge(t,n),i=r.bySig.get(c);if(i)return i.owners.add(o),i;let u=null;if(r.bySig.forEach(f=>{!u&&f.target===t&&(u=f)}),u)return u.owners.add(o),u;let s=we(t,n);if(!s)return null;let l={split:s,target:t,sig:c,owners:new Set([o])};return r.bySig.set(c,l),l}function Z(e){let t=e||J,n=P();n.bySig.forEach((o,r)=>{o.owners.has(t)&&(o.owners.delete(t),o.owners.size===0&&(ye(o),n.bySig.delete(r)))})}function me(e){return typeof e!="string"||e.includes("chars")?"chars":e.includes("words")?"words":e.includes("lines")?"lines":"chars"}function ee(e,t){var o,r;if(!e)return null;let n=me(t);if((o=e[n])!=null&&o.length)return e[n];for(let c of["chars","words","lines"])if((r=e[c])!=null&&r.length)return e[c];return null}var Ee="data-motionkit-anim-id",Se=["h1","h2","h3","h4","h5","h6","p","span","div","a","img","video","button","li","ul","ol","section","article","header","footer","nav","main","aside"];function Ae(e){if(!e||typeof e!="string")return"";let t=e.trim();return t.startsWith(".")||t.startsWith("#")||t.startsWith("[")||t.startsWith(":")||t.includes(" ")||t.includes(">")||t.includes(",")||Se.includes(t.toLowerCase())?t:"."+t}var te=new Set;function Te(e,t,n){let o=e+"|"+t;te.has(o)||(te.add(o),console.warn(`[${e}] ${n}`))}function _(e,t,n){if(!t||typeof t!="string")return[];let o=n||document,r=Ae(t);try{let c=o.querySelectorAll(r);if(c.length||r===t)return[...c]}catch(c){}try{return[...o.querySelectorAll(t)]}catch(c){return Te(e,t,`invalid selector "${t}": ${c.message}`),[]}}function ve(){return{listeners:[],scrollTriggers:[],animations:[],elements:[],tweenRestores:[],structuralRestores:[],cleanups:[]}}function y(e,t,n){try{n()}catch(o){console.warn(`[${e}] ${t} teardown error:`,o)}}function re(e,t,n){n.listeners.forEach(({el:r,type:c,fn:i,opts:u})=>y(e,"listener",()=>r.removeEventListener(c,i,u))),n.scrollTriggers.forEach(r=>y(e,"scrollTrigger",()=>r==null?void 0:r.kill()));let o=typeof window!="undefined"&&window.ScrollTrigger?window.ScrollTrigger.getById(t):null;o&&y(e,"scrollTrigger",()=>o.kill()),n.animations.forEach(r=>y(e,"animation",()=>{var c,i;(c=r==null?void 0:r.revert)==null||c.call(r),(i=r==null?void 0:r.kill)==null||i.call(r)})),n.elements.forEach(r=>y(e,"element",()=>{var c;return(c=r==null?void 0:r.remove)==null?void 0:c.call(r)})),n.tweenRestores.forEach(r=>y(e,"style",r)),n.structuralRestores.forEach(r=>y(e,"style",r)),y(e,"split",()=>Z(t));for(let r=n.cleanups.length-1;r>=0;r--)y(e,"cleanup",n.cleanups[r])}function xe(e,t,n,o,r){var c;return{id:t.id,targets:n,data:o,vars:t.vars||{},markers:((c=t.vars)==null?void 0:c.markers)===!0&&F(),get triggers(){var s;let i=((s=t.trigger)==null?void 0:s.selector)||t.triggerClass,u=i?_(e,i):[];return u.length?u:n},select:(i,u)=>_(e,i,u),on(i,u,s,l){i&&(i.addEventListener(u,s,l),r.listeners.push({el:i,type:u,fn:s,opts:l}))},add(i){return i&&r.animations.push(i),i},addScrollTrigger(i){return i&&r.scrollTriggers.push(i),i},addElement(i){return i&&r.elements.push(i),i},split(i,u){let s=Q(t.id,i,u);return s?ee(s.split,u==null?void 0:u.type)||[]:[]},clearProps(i,u){i&&r.tweenRestores.push(()=>gsap.set(i,{clearProps:u}))},restoreStyle(i,u){if(!i)return;let s={};u.forEach(l=>s[l]=i.style[l]),r.structuralRestores.push(()=>{u.forEach(l=>{var f;return i.style[l]=(f=s[l])!=null?f:""})})},claim(){let i=M(n,t.id);return i&&r.animations.forEach(u=>{var s;try{(s=u.invalidate)==null||s.call(u)}catch(l){}}),i},onCleanup(i){typeof i=="function"&&r.cleanups.push(i)}}}function ne(e,t){let n=t.label||e,o=t.requires||["itemClass"];K(e,function(){let r=new Map;function c(s){let l=r.get(s);l&&(r.delete(s),G(s),re(n,s,l))}function i(){for(let s of[...r.keys()])c(s);typeof t.teardownGlobal=="function"&&y(n,"global",t.teardownGlobal)}function u(s){var d;if(!s||typeof s!="object"||!U(s)||o.some(a=>!s[a]))return;let l,f=null;if(typeof t.resolve=="function"){let a=t.resolve(s,{select:(p,g)=>_(n,p,g)});if(Array.isArray(a)?l=a:a&&(l=a.targets,f=(d=a.data)!=null?d:null),!l)return}else if(l=_(n,s.itemClass),!l.length)return;if(c(s.id),l.forEach(a=>a.setAttribute(Ee,s.id)),s.mkInert)return;let h=ve(),T=xe(n,s,l,f,h);r.set(s.id,h);let E=()=>{var p;if(r.get(s.id)!==h)return;try{t.build(s,T)}catch(g){console.error(`[${n}] build failed:`,g),r.delete(s.id),re(n,s.id,h);return}Y(s.id,h.animations),z(s.id,()=>h.tweenRestores.forEach(g=>y(n,"ownership reset",g)));let a=(p=s.trigger)==null?void 0:p.type;a!=="click"&&a!=="hover"&&M(l,s.id)};j(window)?X(window,E):E()}return{run:u,teardown:i}})}var _e="motionkit-mk-image-md-pa",b=90,oe=260,be=.52,k=55;function ke(e){if(!e)return"";if(e.tagName==="IMG")return e.currentSrc||e.getAttribute("src")||"";let t=getComputedStyle(e).backgroundImage;if(!t||t==="none")return"";let n=t.match(/url\((['"]?)(.*?)\1\)/);return n?n[2]:""}var ie=1;function Be(e,t,n,o){let r=document.createElement("div");r.setAttribute("data-mk-md-tiles",""),Object.assign(r.style,{position:"absolute",inset:"0",overflow:"hidden",pointerEvents:"none",borderRadius:"inherit",zIndex:"3",perspective:"1400px"});let c=e.getBoundingClientRect(),i=c.width>0&&c.height>0,u=c.width,s=c.height,l=u/n,f=s/o,h=Math.max(n-1,1),T=Math.max(o-1,1),E=[];for(let d=0;d<o;d+=1)for(let a=0;a<n;a+=1){let p=document.createElement("span"),g={position:"absolute",display:"block",overflow:"hidden",backgroundImage:`url("${t}")`,backgroundRepeat:"no-repeat",transformStyle:"preserve-3d",backfaceVisibility:"hidden",willChange:"transform, opacity"};i?Object.assign(p.style,g,{left:`${a*l}px`,top:`${d*f}px`,width:`${l+ie}px`,height:`${f+ie}px`,backgroundSize:`${u}px ${s}px`,backgroundPosition:`${-a*l}px ${-d*f}px`}):Object.assign(p.style,g,{left:`${a*100/n}%`,top:`${d*100/o}%`,width:`${100/n}%`,height:`${100/o}%`,backgroundSize:`${n*100}% ${o*100}%`,backgroundPosition:`${a/h*100}% ${d/T*100}%`}),r.appendChild(p),E.push(p)}return e.appendChild(r),{wrap:r,tiles:E}}ne(_e,{label:"imageMosaicDepth",resolve(e,{select:t}){let n=t(e.itemClass);if(!n.length)return null;let o=n.map(r=>r.parentElement).filter(Boolean);return{targets:[...n,...o],data:{items:n}}},build(e,t){let{triggerClass:n,trigger:{type:o,selector:r}={}}=e,{tileColumns:c=7,tileRows:i=5,tileOrder:u="random",stagger:s=.72,delay:l=0,duration:f=1.22,animationStart:h,animationCStart:T,ease:E="expo.out"}=t.vars,d=r||n,a=h==="custom"?T:h,p=o==="click"||o==="hover",g=Math.max(2,Math.round(c)),L=Math.max(2,Math.round(i)),H=Math.min(.28,f*.32),O=[];if(t.data.items.forEach(S=>{let w=S.parentElement;if(!w)return;let v=ke(S);if(!v){console.warn("[imageMosaicDepth] could not resolve an image source for",e.itemClass);return}let B=getComputedStyle(w);B.position==="static"&&(t.restoreStyle(w,["position"]),w.style.position="relative"),B.overflow==="visible"&&(t.restoreStyle(w,["overflow"]),w.style.overflow="hidden");let{wrap:A,tiles:N}=Be(w,v,g,L);t.addElement(A),t.clearProps(S,"opacity,visibility");let ce=o==="page_load"?{delay:l}:p?{delay:l,paused:!0}:{delay:l,scrollTrigger:{trigger:d||w,start:a,scrub:o==="play_with_scroll"}},q=t.add(gsap.timeline(ce));p&&gsap.set(A,{autoAlpha:0}),q.set(S,{autoAlpha:0}).set(A,{autoAlpha:1}).set(N,{autoAlpha:0,scale:be,z:()=>gsap.utils.random(-oe,oe),x:()=>gsap.utils.random(-b,b),y:()=>gsap.utils.random(-b,b),rotationX:()=>gsap.utils.random(-k,k),rotationY:()=>gsap.utils.random(-k,k)}).to(N,{autoAlpha:1,scale:1,x:0,y:0,z:0,rotationX:0,rotationY:0,duration:f,ease:E,stagger:{amount:s,from:u,grid:[L,g]}}).set(S,{autoAlpha:1},`>-${H}`).to(A,{autoAlpha:0,duration:H,ease:"power2.out"},"<"),O.push({tl:q,containerEl:w})}),!p)return;let se=o==="click"?"click":"mouseenter";O.forEach(({tl:S,containerEl:w})=>{let v=d?t.select(d):[];(v.length?v:[w]).forEach(A=>t.on(A,se,()=>{t.claim(),S.restart(!0)}))})}});})();
+(() => {
+  var D = "__motionkitPresetHandlers";
+  function ue() {
+    return typeof window == "undefined"
+      ? new Map()
+      : (window[D] || (window[D] = new Map()), window[D]);
+  }
+  function K(e, t) {
+    if (!e || typeof t != "function") return;
+    let n = ue();
+    if (n.has(e)) return;
+    let o = t() || {};
+    n.set(e, {
+      key: e,
+      run: typeof o.run == "function" ? o.run : function () {},
+      teardown: typeof o.teardown == "function" ? o.teardown : function () {},
+    });
+  }
+  var m = { DRAFT: "draft", SAVED: "saved", PUBLISHED: "published" },
+    le = [m.DRAFT, m.SAVED, m.PUBLISHED],
+    ae = "preview";
+  function fe(e) {
+    return !e || typeof e != "object"
+      ? m.PUBLISHED
+      : le.indexOf(e.status) !== -1
+      ? e.status
+      : e.status === ae || e.isPublished === !1
+      ? m.SAVED
+      : m.PUBLISHED;
+  }
+  function U(e) {
+    return fe(e) !== m.DRAFT;
+  }
+  function de() {
+    return typeof window == "undefined"
+      ? {}
+      : window.__motionkitHostData || window.motionkitData || {};
+  }
+  function W() {
+    return de().motionkit_token || null;
+  }
+  var F = () =>
+    typeof window == "undefined"
+      ? !1
+      : window.location.search.includes("action=motionkit-editor")
+      ? !0
+      : !!W();
+  var C = "__motionkitOwnership";
+  function x() {
+    let e = typeof window != "undefined" ? window : globalThis;
+    return (
+      e[C] ||
+        (e[C] = {
+          ownerByEl: new WeakMap(),
+          elsByAnim: new Map(),
+          animsByAnim: new Map(),
+          resetByAnim: new Map(),
+        }),
+      e[C]
+    );
+  }
+  x();
+  function Y(e, t) {
+    e && x().animsByAnim.set(e, t || []);
+  }
+  function z(e, t) {
+    !e || typeof t != "function" || x().resetByAnim.set(e, t);
+  }
+  function pe(e, t, n) {
+    let o = e.elsByAnim.get(t);
+    o || ((o = new Set()), e.elsByAnim.set(t, o)), o.add(n);
+  }
+  function M(e, t) {
+    if (!t || !e || !e.length) return !1;
+    let n = x(),
+      o = new Map();
+    return (
+      e.forEach((r) => {
+        var i;
+        if (!r) return;
+        let c = n.ownerByEl.get(r);
+        c && c !== t && (o.has(c) || o.set(c, []), o.get(c).push(r)),
+          n.ownerByEl.set(r, t),
+          pe(n, t, r),
+          (i = r.setAttribute) == null ||
+            i.call(r, "data-motionkit-anim-id", t);
+      }),
+      o.size
+        ? (o.forEach((r, c) => {
+            (n.animsByAnim.get(c) || []).forEach((u) => {
+              var s;
+              try {
+                (s = u.pause) == null || s.call(u);
+              } catch (l) {}
+            });
+            let i = n.resetByAnim.get(c);
+            if (i)
+              try {
+                i(r);
+              } catch (u) {
+                console.warn("[motionkit] ownership reset error:", u);
+              }
+          }),
+          !0)
+        : !1
+    );
+  }
+  function G(e) {
+    let t = x(),
+      n = t.elsByAnim.get(e);
+    n &&
+      (n.forEach((o) => {
+        t.ownerByEl.get(o) === e && t.ownerByEl.delete(o);
+      }),
+      t.elsByAnim.delete(e)),
+      t.animsByAnim.delete(e),
+      t.resetByAnim.delete(e);
+  }
+  var R = "__motionkitScreen";
+  function V(e) {
+    let t = e || (typeof window != "undefined" ? window : null);
+    return t
+      ? (t[R] || (t[R] = { held: !1, queue: [], deadline: 12e3 }), t[R])
+      : { held: !1, queue: [], deadline: 12e3 };
+  }
+  function I(e) {
+    try {
+      e();
+    } catch (t) {
+      console.error("[motionkit] a screen-release waiter threw", t);
+    }
+  }
+  function j(e) {
+    return V(e).held === !0;
+  }
+  function X(e, t) {
+    let n = V(e);
+    if (!n.held) {
+      I(t);
+      return;
+    }
+    let o = !1,
+      r = () => {
+        o || ((o = !0), I(t));
+      };
+    n.queue.push(r);
+    let c = e || window;
+    c && typeof c.setTimeout == "function" && c.setTimeout(r, n.deadline + 400);
+  }
+  var $ = "__motionkitSplits",
+    J = "__no_owner__";
+  function P() {
+    let e = typeof window != "undefined" ? window : globalThis;
+    return (
+      e[$] || (e[$] = { bySig: new Map(), elKeys: new WeakMap(), seq: 0 }), e[$]
+    );
+  }
+  function he(e) {
+    if (typeof e == "string") return e;
+    if (!e || e.nodeType !== 1) return String(e);
+    let t = P(),
+      n = t.elKeys.get(e);
+    return n || ((t.seq += 1), (n = `__el${t.seq}`), t.elKeys.set(e, n)), n;
+  }
+  function ge(e, t) {
+    return `${he(e)}::${JSON.stringify(t || {})}`;
+  }
+  function we(e, t) {
+    if (typeof SplitText == "undefined") return null;
+    try {
+      return typeof SplitText.create == "function"
+        ? SplitText.create(e, t)
+        : new SplitText(e, t);
+    } catch (n) {
+      return console.warn("[motionkit] SplitText failed for", e, n), null;
+    }
+  }
+  function ye(e) {
+    var t, n;
+    try {
+      (n = (t = e.split) == null ? void 0 : t.revert) == null || n.call(t);
+    } catch (o) {}
+  }
+  function Q(e, t, n) {
+    if (!t) return null;
+    let o = e || J,
+      r = P(),
+      c = ge(t, n),
+      i = r.bySig.get(c);
+    if (i) return i.owners.add(o), i;
+    let u = null;
+    if (
+      (r.bySig.forEach((f) => {
+        !u && f.target === t && (u = f);
+      }),
+      u)
+    )
+      return u.owners.add(o), u;
+    let s = we(t, n);
+    if (!s) return null;
+    let l = { split: s, target: t, sig: c, owners: new Set([o]) };
+    return r.bySig.set(c, l), l;
+  }
+  function Z(e) {
+    let t = e || J,
+      n = P();
+    n.bySig.forEach((o, r) => {
+      o.owners.has(t) &&
+        (o.owners.delete(t), o.owners.size === 0 && (ye(o), n.bySig.delete(r)));
+    });
+  }
+  function me(e) {
+    return typeof e != "string" || e.includes("chars")
+      ? "chars"
+      : e.includes("words")
+      ? "words"
+      : e.includes("lines")
+      ? "lines"
+      : "chars";
+  }
+  function ee(e, t) {
+    var o, r;
+    if (!e) return null;
+    let n = me(t);
+    if ((o = e[n]) != null && o.length) return e[n];
+    for (let c of ["chars", "words", "lines"])
+      if ((r = e[c]) != null && r.length) return e[c];
+    return null;
+  }
+  var Ee = "data-motionkit-anim-id",
+    Se = [
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "p",
+      "span",
+      "div",
+      "a",
+      "img",
+      "video",
+      "button",
+      "li",
+      "ul",
+      "ol",
+      "section",
+      "article",
+      "header",
+      "footer",
+      "nav",
+      "main",
+      "aside",
+    ];
+  function Ae(e) {
+    if (!e || typeof e != "string") return "";
+    let t = e.trim();
+    return t.startsWith(".") ||
+      t.startsWith("#") ||
+      t.startsWith("[") ||
+      t.startsWith(":") ||
+      t.includes(" ") ||
+      t.includes(">") ||
+      t.includes(",") ||
+      Se.includes(t.toLowerCase())
+      ? t
+      : "." + t;
+  }
+  var te = new Set();
+  function Te(e, t, n) {
+    let o = e + "|" + t;
+    te.has(o) || (te.add(o), console.warn(`[${e}] ${n}`));
+  }
+  function _(e, t, n) {
+    if (!t || typeof t != "string") return [];
+    let o = n || document,
+      r = Ae(t);
+    try {
+      let c = o.querySelectorAll(r);
+      if (c.length || r === t) return [...c];
+    } catch (c) {}
+    try {
+      return [...o.querySelectorAll(t)];
+    } catch (c) {
+      return Te(e, t, `invalid selector "${t}": ${c.message}`), [];
+    }
+  }
+  function ve() {
+    return {
+      listeners: [],
+      scrollTriggers: [],
+      animations: [],
+      elements: [],
+      tweenRestores: [],
+      structuralRestores: [],
+      cleanups: [],
+    };
+  }
+  function y(e, t, n) {
+    try {
+      n();
+    } catch (o) {
+      console.warn(`[${e}] ${t} teardown error:`, o);
+    }
+  }
+  function re(e, t, n) {
+    n.listeners.forEach(({ el: r, type: c, fn: i, opts: u }) =>
+      y(e, "listener", () => r.removeEventListener(c, i, u)),
+    ),
+      n.scrollTriggers.forEach((r) =>
+        y(e, "scrollTrigger", () => (r == null ? void 0 : r.kill())),
+      );
+    let o =
+      typeof window != "undefined" && window.ScrollTrigger
+        ? window.ScrollTrigger.getById(t)
+        : null;
+    o && y(e, "scrollTrigger", () => o.kill()),
+      n.animations.forEach((r) =>
+        y(e, "animation", () => {
+          var c, i;
+          (c = r == null ? void 0 : r.revert) == null || c.call(r),
+            (i = r == null ? void 0 : r.kill) == null || i.call(r);
+        }),
+      ),
+      n.elements.forEach((r) =>
+        y(e, "element", () => {
+          var c;
+          return (c = r == null ? void 0 : r.remove) == null
+            ? void 0
+            : c.call(r);
+        }),
+      ),
+      n.tweenRestores.forEach((r) => y(e, "style", r)),
+      n.structuralRestores.forEach((r) => y(e, "style", r)),
+      y(e, "split", () => Z(t));
+    for (let r = n.cleanups.length - 1; r >= 0; r--)
+      y(e, "cleanup", n.cleanups[r]);
+  }
+  function xe(e, t, n, o, r) {
+    var c;
+    return {
+      id: t.id,
+      targets: n,
+      data: o,
+      vars: t.vars || {},
+      markers: ((c = t.vars) == null ? void 0 : c.markers) === !0 && F(),
+      get triggers() {
+        var s;
+        let i =
+            ((s = t.trigger) == null ? void 0 : s.selector) || t.triggerClass,
+          u = i ? _(e, i) : [];
+        return u.length ? u : n;
+      },
+      select: (i, u) => _(e, i, u),
+      on(i, u, s, l) {
+        i &&
+          (i.addEventListener(u, s, l),
+          r.listeners.push({ el: i, type: u, fn: s, opts: l }));
+      },
+      add(i) {
+        return i && r.animations.push(i), i;
+      },
+      addScrollTrigger(i) {
+        return i && r.scrollTriggers.push(i), i;
+      },
+      addElement(i) {
+        return i && r.elements.push(i), i;
+      },
+      split(i, u) {
+        let s = Q(t.id, i, u);
+        return s ? ee(s.split, u == null ? void 0 : u.type) || [] : [];
+      },
+      clearProps(i, u) {
+        i && r.tweenRestores.push(() => gsap.set(i, { clearProps: u }));
+      },
+      restoreStyle(i, u) {
+        if (!i) return;
+        let s = {};
+        u.forEach((l) => (s[l] = i.style[l])),
+          r.structuralRestores.push(() => {
+            u.forEach((l) => {
+              var f;
+              return (i.style[l] = (f = s[l]) != null ? f : "");
+            });
+          });
+      },
+      claim() {
+        let i = M(n, t.id);
+        return (
+          i &&
+            r.animations.forEach((u) => {
+              var s;
+              try {
+                (s = u.invalidate) == null || s.call(u);
+              } catch (l) {}
+            }),
+          i
+        );
+      },
+      onCleanup(i) {
+        typeof i == "function" && r.cleanups.push(i);
+      },
+    };
+  }
+  function ne(e, t) {
+    let n = t.label || e,
+      o = t.requires || ["itemClass"];
+    K(e, function () {
+      let r = new Map();
+      function c(s) {
+        let l = r.get(s);
+        l && (r.delete(s), G(s), re(n, s, l));
+      }
+      function i() {
+        for (let s of [...r.keys()]) c(s);
+        typeof t.teardownGlobal == "function" &&
+          y(n, "global", t.teardownGlobal);
+      }
+      function u(s) {
+        var d;
+        if (!s || typeof s != "object" || !U(s) || o.some((a) => !s[a])) return;
+        let l,
+          f = null;
+        if (typeof t.resolve == "function") {
+          let a = t.resolve(s, { select: (p, g) => _(n, p, g) });
+          if (
+            (Array.isArray(a)
+              ? (l = a)
+              : a && ((l = a.targets), (f = (d = a.data) != null ? d : null)),
+            !l)
+          )
+            return;
+        } else if (((l = _(n, s.itemClass)), !l.length)) return;
+        if ((c(s.id), l.forEach((a) => a.setAttribute(Ee, s.id)), s.mkInert))
+          return;
+        let h = ve(),
+          T = xe(n, s, l, f, h);
+        r.set(s.id, h);
+        let E = () => {
+          var p;
+          if (r.get(s.id) !== h) return;
+          try {
+            t.build(s, T);
+          } catch (g) {
+            console.error(`[${n}] build failed:`, g),
+              r.delete(s.id),
+              re(n, s.id, h);
+            return;
+          }
+          Y(s.id, h.animations),
+            z(s.id, () =>
+              h.tweenRestores.forEach((g) => y(n, "ownership reset", g)),
+            );
+          let a = (p = s.trigger) == null ? void 0 : p.type;
+          a !== "click" && a !== "hover" && M(l, s.id);
+        };
+        j(window) ? X(window, E) : E();
+      }
+      return { run: u, teardown: i };
+    });
+  }
+  var _e = "motionkit-mk-image-md-pa",
+    b = 90,
+    oe = 260,
+    be = 0.52,
+    k = 55;
+  function ke(e) {
+    if (!e) return "";
+    if (e.tagName === "IMG") return e.currentSrc || e.getAttribute("src") || "";
+    let t = getComputedStyle(e).backgroundImage;
+    if (!t || t === "none") return "";
+    let n = t.match(/url\((['"]?)(.*?)\1\)/);
+    return n ? n[2] : "";
+  }
+  var ie = 1;
+  function Be(e, t, n, o) {
+    let r = document.createElement("div");
+    r.setAttribute("data-mk-md-tiles", ""),
+      Object.assign(r.style, {
+        position: "absolute",
+        inset: "0",
+        overflow: "hidden",
+        pointerEvents: "none",
+        borderRadius: "inherit",
+        zIndex: "3",
+        perspective: "1400px",
+      });
+    let c = e.getBoundingClientRect(),
+      i = c.width > 0 && c.height > 0,
+      u = c.width,
+      s = c.height,
+      l = u / n,
+      f = s / o,
+      h = Math.max(n - 1, 1),
+      T = Math.max(o - 1, 1),
+      E = [];
+    for (let d = 0; d < o; d += 1)
+      for (let a = 0; a < n; a += 1) {
+        let p = document.createElement("span"),
+          g = {
+            position: "absolute",
+            display: "block",
+            overflow: "hidden",
+            backgroundImage: `url("${t}")`,
+            backgroundRepeat: "no-repeat",
+            transformStyle: "preserve-3d",
+            backfaceVisibility: "hidden",
+            willChange: "transform, opacity",
+          };
+        i
+          ? Object.assign(p.style, g, {
+              left: `${a * l}px`,
+              top: `${d * f}px`,
+              width: `${l + ie}px`,
+              height: `${f + ie}px`,
+              backgroundSize: `${u}px ${s}px`,
+              backgroundPosition: `${-a * l}px ${-d * f}px`,
+            })
+          : Object.assign(p.style, g, {
+              left: `${(a * 100) / n}%`,
+              top: `${(d * 100) / o}%`,
+              width: `${100 / n}%`,
+              height: `${100 / o}%`,
+              backgroundSize: `${n * 100}% ${o * 100}%`,
+              backgroundPosition: `${(a / h) * 100}% ${(d / T) * 100}%`,
+            }),
+          r.appendChild(p),
+          E.push(p);
+      }
+    return e.appendChild(r), { wrap: r, tiles: E };
+  }
+  ne(_e, {
+    label: "imageMosaicDepth",
+    resolve(e, { select: t }) {
+      let n = t(e.itemClass);
+      if (!n.length) return null;
+      let o = n.map((r) => r.parentElement).filter(Boolean);
+      return { targets: [...n, ...o], data: { items: n } };
+    },
+    build(e, t) {
+      let { triggerClass: n, trigger: { type: o, selector: r } = {} } = e,
+        {
+          tileColumns: c = 7,
+          tileRows: i = 5,
+          tileOrder: u = "random",
+          stagger: s = 0.72,
+          delay: l = 0,
+          duration: f = 1.22,
+          animationStart: h,
+          animationCStart: T,
+          ease: E = "expo.out",
+        } = t.vars,
+        d = r || n,
+        a = h === "custom" ? T : h,
+        p = o === "click" || o === "hover",
+        g = Math.max(2, Math.round(c)),
+        L = Math.max(2, Math.round(i)),
+        H = Math.min(0.28, f * 0.32),
+        O = [];
+      if (
+        (t.data.items.forEach((S) => {
+          let w = S.parentElement;
+          if (!w) return;
+          let v = ke(S);
+          if (!v) {
+            console.warn(
+              "[imageMosaicDepth] could not resolve an image source for",
+              e.itemClass,
+            );
+            return;
+          }
+          let B = getComputedStyle(w);
+          B.position === "static" &&
+            (t.restoreStyle(w, ["position"]), (w.style.position = "relative")),
+            B.overflow === "visible" &&
+              (t.restoreStyle(w, ["overflow"]), (w.style.overflow = "hidden"));
+          let { wrap: A, tiles: N } = Be(w, v, g, L);
+          t.addElement(A), t.clearProps(S, "opacity,visibility");
+          let ce =
+              o === "page_load"
+                ? { delay: l }
+                : p
+                ? { delay: l, paused: !0 }
+                : {
+                    delay: l,
+                    scrollTrigger: {
+                      trigger: d || w,
+                      start: a,
+                      scrub: o === "play_with_scroll",
+                    },
+                  },
+            q = t.add(gsap.timeline(ce));
+          p && gsap.set(A, { autoAlpha: 0 }),
+            q
+              .set(S, { autoAlpha: 0 })
+              .set(A, { autoAlpha: 1 })
+              .set(N, {
+                autoAlpha: 0,
+                scale: be,
+                z: () => gsap.utils.random(-oe, oe),
+                x: () => gsap.utils.random(-b, b),
+                y: () => gsap.utils.random(-b, b),
+                rotationX: () => gsap.utils.random(-k, k),
+                rotationY: () => gsap.utils.random(-k, k),
+              })
+              .to(N, {
+                autoAlpha: 1,
+                scale: 1,
+                x: 0,
+                y: 0,
+                z: 0,
+                rotationX: 0,
+                rotationY: 0,
+                duration: f,
+                ease: E,
+                stagger: { amount: s, from: u, grid: [L, g] },
+              })
+              .set(S, { autoAlpha: 1 }, `>-${H}`)
+              .to(A, { autoAlpha: 0, duration: H, ease: "power2.out" }, "<"),
+            O.push({ tl: q, containerEl: w });
+        }),
+        !p)
+      )
+        return;
+      let se = o === "click" ? "click" : "mouseenter";
+      O.forEach(({ tl: S, containerEl: w }) => {
+        let v = d ? t.select(d) : [];
+        (v.length ? v : [w]).forEach((A) =>
+          t.on(A, se, () => {
+            t.claim(), S.restart(!0);
+          }),
+        );
+      });
+    },
+  });
+})();

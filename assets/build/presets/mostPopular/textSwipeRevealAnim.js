@@ -1,1 +1,555 @@
-(()=>{var k="__motionkitPresetHandlers";function Q(){return typeof window=="undefined"?new Map:(window[k]||(window[k]=new Map),window[k])}function M(t,e){if(!t||typeof e!="function")return;let n=Q();if(n.has(t))return;let o=e()||{};n.set(t,{key:t,run:typeof o.run=="function"?o.run:function(){},teardown:typeof o.teardown=="function"?o.teardown:function(){}})}var g={DRAFT:"draft",SAVED:"saved",PUBLISHED:"published"},Z=[g.DRAFT,g.SAVED,g.PUBLISHED],ee="preview";function te(t){return!t||typeof t!="object"?g.PUBLISHED:Z.indexOf(t.status)!==-1?t.status:t.status===ee||t.isPublished===!1?g.SAVED:g.PUBLISHED}function P(t){return te(t)!==g.DRAFT}function re(){return typeof window=="undefined"?{}:window.__motionkitHostData||window.motionkitData||{}}function O(){return re().motionkit_token||null}var H=()=>typeof window=="undefined"?!1:window.location.search.includes("action=motionkit-editor")?!0:!!O();var B="__motionkitOwnership";function m(){let t=typeof window!="undefined"?window:globalThis;return t[B]||(t[B]={ownerByEl:new WeakMap,elsByAnim:new Map,animsByAnim:new Map,resetByAnim:new Map}),t[B]}m();function q(t,e){t&&m().animsByAnim.set(t,e||[])}function U(t,e){!t||typeof e!="function"||m().resetByAnim.set(t,e)}function ne(t,e,n){let o=t.elsByAnim.get(e);o||(o=new Set,t.elsByAnim.set(e,o)),o.add(n)}function x(t,e){if(!e||!t||!t.length)return!1;let n=m(),o=new Map;return t.forEach(r=>{var i;if(!r)return;let c=n.ownerByEl.get(r);c&&c!==e&&(o.has(c)||o.set(c,[]),o.get(c).push(r)),n.ownerByEl.set(r,e),ne(n,e,r),(i=r.setAttribute)==null||i.call(r,"data-motionkit-anim-id",e)}),o.size?(o.forEach((r,c)=>{(n.animsByAnim.get(c)||[]).forEach(u=>{var s;try{(s=u.pause)==null||s.call(u)}catch(f){}});let i=n.resetByAnim.get(c);if(i)try{i(r)}catch(u){console.warn("[motionkit] ownership reset error:",u)}}),!0):!1}function F(t){let e=m(),n=e.elsByAnim.get(t);n&&(n.forEach(o=>{e.ownerByEl.get(o)===t&&e.ownerByEl.delete(o)}),e.elsByAnim.delete(t)),e.animsByAnim.delete(t),e.resetByAnim.delete(t)}var D="__motionkitScreen";function N(t){let e=t||(typeof window!="undefined"?window:null);return e?(e[D]||(e[D]={held:!1,queue:[],deadline:12e3}),e[D]):{held:!1,queue:[],deadline:12e3}}function K(t){try{t()}catch(e){console.error("[motionkit] a screen-release waiter threw",e)}}function W(t){return N(t).held===!0}function $(t,e){let n=N(t);if(!n.held){K(e);return}let o=!1,r=()=>{o||(o=!0,K(e))};n.queue.push(r);let c=t||window;c&&typeof c.setTimeout=="function"&&c.setTimeout(r,n.deadline+400)}var R="__motionkitSplits",G="__no_owner__";function C(){let t=typeof window!="undefined"?window:globalThis;return t[R]||(t[R]={bySig:new Map,elKeys:new WeakMap,seq:0}),t[R]}function oe(t){if(typeof t=="string")return t;if(!t||t.nodeType!==1)return String(t);let e=C(),n=e.elKeys.get(t);return n||(e.seq+=1,n=`__el${e.seq}`,e.elKeys.set(t,n)),n}function ie(t,e){return`${oe(t)}::${JSON.stringify(e||{})}`}function se(t,e){if(typeof SplitText=="undefined")return null;try{return typeof SplitText.create=="function"?SplitText.create(t,e):new SplitText(t,e)}catch(n){return console.warn("[motionkit] SplitText failed for",t,n),null}}function ce(t){var e,n;try{(n=(e=t.split)==null?void 0:e.revert)==null||n.call(e)}catch(o){}}function Y(t,e,n){if(!e)return null;let o=t||G,r=C(),c=ie(e,n),i=r.bySig.get(c);if(i)return i.owners.add(o),i;let u=null;if(r.bySig.forEach(d=>{!u&&d.target===e&&(u=d)}),u)return u.owners.add(o),u;let s=se(e,n);if(!s)return null;let f={split:s,target:e,sig:c,owners:new Set([o])};return r.bySig.set(c,f),f}function z(t){let e=t||G,n=C();n.bySig.forEach((o,r)=>{o.owners.has(e)&&(o.owners.delete(e),o.owners.size===0&&(ce(o),n.bySig.delete(r)))})}function ue(t){return typeof t!="string"||t.includes("chars")?"chars":t.includes("words")?"words":t.includes("lines")?"lines":"chars"}function V(t,e){var o,r;if(!t)return null;let n=ue(e);if((o=t[n])!=null&&o.length)return t[n];for(let c of["chars","words","lines"])if((r=t[c])!=null&&r.length)return t[c];return null}var fe="data-motionkit-anim-id",le=["h1","h2","h3","h4","h5","h6","p","span","div","a","img","video","button","li","ul","ol","section","article","header","footer","nav","main","aside"];function ae(t){if(!t||typeof t!="string")return"";let e=t.trim();return e.startsWith(".")||e.startsWith("#")||e.startsWith("[")||e.startsWith(":")||e.includes(" ")||e.includes(">")||e.includes(",")||le.includes(e.toLowerCase())?e:"."+e}var j=new Set;function de(t,e,n){let o=t+"|"+e;j.has(o)||(j.add(o),console.warn(`[${t}] ${n}`))}function _(t,e,n){if(!e||typeof e!="string")return[];let o=n||document,r=ae(e);try{let c=o.querySelectorAll(r);if(c.length||r===e)return[...c]}catch(c){}try{return[...o.querySelectorAll(e)]}catch(c){return de(t,e,`invalid selector "${e}": ${c.message}`),[]}}function pe(){return{listeners:[],scrollTriggers:[],animations:[],elements:[],tweenRestores:[],structuralRestores:[],cleanups:[]}}function p(t,e,n){try{n()}catch(o){console.warn(`[${t}] ${e} teardown error:`,o)}}function X(t,e,n){n.listeners.forEach(({el:r,type:c,fn:i,opts:u})=>p(t,"listener",()=>r.removeEventListener(c,i,u))),n.scrollTriggers.forEach(r=>p(t,"scrollTrigger",()=>r==null?void 0:r.kill()));let o=typeof window!="undefined"&&window.ScrollTrigger?window.ScrollTrigger.getById(e):null;o&&p(t,"scrollTrigger",()=>o.kill()),n.animations.forEach(r=>p(t,"animation",()=>{var c,i;(c=r==null?void 0:r.revert)==null||c.call(r),(i=r==null?void 0:r.kill)==null||i.call(r)})),n.elements.forEach(r=>p(t,"element",()=>{var c;return(c=r==null?void 0:r.remove)==null?void 0:c.call(r)})),n.tweenRestores.forEach(r=>p(t,"style",r)),n.structuralRestores.forEach(r=>p(t,"style",r)),p(t,"split",()=>z(e));for(let r=n.cleanups.length-1;r>=0;r--)p(t,"cleanup",n.cleanups[r])}function we(t,e,n,o,r){var c;return{id:e.id,targets:n,data:o,vars:e.vars||{},markers:((c=e.vars)==null?void 0:c.markers)===!0&&H(),get triggers(){var s;let i=((s=e.trigger)==null?void 0:s.selector)||e.triggerClass,u=i?_(t,i):[];return u.length?u:n},select:(i,u)=>_(t,i,u),on(i,u,s,f){i&&(i.addEventListener(u,s,f),r.listeners.push({el:i,type:u,fn:s,opts:f}))},add(i){return i&&r.animations.push(i),i},addScrollTrigger(i){return i&&r.scrollTriggers.push(i),i},addElement(i){return i&&r.elements.push(i),i},split(i,u){let s=Y(e.id,i,u);return s?V(s.split,u==null?void 0:u.type)||[]:[]},clearProps(i,u){i&&r.tweenRestores.push(()=>gsap.set(i,{clearProps:u}))},restoreStyle(i,u){if(!i)return;let s={};u.forEach(f=>s[f]=i.style[f]),r.structuralRestores.push(()=>{u.forEach(f=>{var d;return i.style[f]=(d=s[f])!=null?d:""})})},claim(){let i=x(n,e.id);return i&&r.animations.forEach(u=>{var s;try{(s=u.invalidate)==null||s.call(u)}catch(f){}}),i},onCleanup(i){typeof i=="function"&&r.cleanups.push(i)}}}function I(t,e){let n=e.label||t,o=e.requires||["itemClass"];M(t,function(){let r=new Map;function c(s){let f=r.get(s);f&&(r.delete(s),F(s),X(n,s,f))}function i(){for(let s of[...r.keys()])c(s);typeof e.teardownGlobal=="function"&&p(n,"global",e.teardownGlobal)}function u(s){var A;if(!s||typeof s!="object"||!P(s)||o.some(l=>!s[l]))return;let f,d=null;if(typeof e.resolve=="function"){let l=e.resolve(s,{select:(E,a)=>_(n,E,a)});if(Array.isArray(l)?f=l:l&&(f=l.targets,d=(A=l.data)!=null?A:null),!f)return}else if(f=_(n,s.itemClass),!f.length)return;if(c(s.id),f.forEach(l=>l.setAttribute(fe,s.id)),s.mkInert)return;let w=pe(),v=we(n,s,f,d,w);r.set(s.id,w);let S=()=>{var E;if(r.get(s.id)!==w)return;try{e.build(s,v)}catch(a){console.error(`[${n}] build failed:`,a),r.delete(s.id),X(n,s.id,w);return}q(s.id,w.animations),U(s.id,()=>w.tweenRestores.forEach(a=>p(n,"ownership reset",a)));let l=(E=s.trigger)==null?void 0:E.type;l!=="click"&&l!=="hover"&&x(f,s.id)};W(window)?$(window,S):S()}return{run:u,teardown:i}})}var he="motionkit-mk-text-swipe-pa",ge="#5fbff9",ye="#f06543";function Ee(t){return t==="right"?"right center":t==="center"?"center center":"left center"}function Se(t,e,n){t.style.position="relative";let o=document.createElement("span");return Object.assign(o.style,{position:"absolute",inset:"0",backgroundColor:e,transformOrigin:n,transform:"scaleX(0)",pointerEvents:"none",zIndex:"2",visibility:"visible"}),t.appendChild(o),o}I(he,{label:"textSwipe",build(t,e){let{trigger:{type:n,selector:o}={}}=t,{splitType:r="lines",direction:c="left",bar1Color:i=ge,bar2Color:u=ye,start:s,startCustom:f,end:d,endCustom:w,delay:v=0,duration:S=.5,stagger:A=.12,ease:l="power2.inOut"}=e.vars,E=Ee(c),a=[];if(r==="element")a=[...e.targets];else{let y=r==="words"?"words":"lines";e.targets.forEach(h=>a.push(...e.split(h,{type:y})))}if(!a.length)return;let J=a.map((y,h)=>e.addElement(Se(y,h%2===0?i:u,E)));e.clearProps(a,"opacity,visibility,position");let b=n==="click"||n==="hover",T=e.add(gsap.timeline({paused:b,delay:n==="play_with_scroll"?0:v,scrollTrigger:n==="page_load"||b?void 0:{id:e.id,trigger:o||t.itemClass,start:s==="custom"?f:s||"top 80%",end:d==="custom"?w:d||"bottom top",scrub:n==="play_with_scroll",markers:e.markers}}));if(T.set(a,{visibility:"hidden"},0),J.forEach((y,h)=>{let L=h*A;T.to(y,{scaleX:1,duration:S,ease:l,repeat:1,yoyo:!0},L),T.set(a[h],{visibility:"visible"},L+S)}),b){let y=n==="click"?"click":"mouseenter";e.triggers.forEach(h=>e.on(h,y,()=>{e.claim(),T.restart(!0)}))}}});})();
+(() => {
+  var k = "__motionkitPresetHandlers";
+  function Q() {
+    return typeof window == "undefined"
+      ? new Map()
+      : (window[k] || (window[k] = new Map()), window[k]);
+  }
+  function M(t, e) {
+    if (!t || typeof e != "function") return;
+    let n = Q();
+    if (n.has(t)) return;
+    let o = e() || {};
+    n.set(t, {
+      key: t,
+      run: typeof o.run == "function" ? o.run : function () {},
+      teardown: typeof o.teardown == "function" ? o.teardown : function () {},
+    });
+  }
+  var g = { DRAFT: "draft", SAVED: "saved", PUBLISHED: "published" },
+    Z = [g.DRAFT, g.SAVED, g.PUBLISHED],
+    ee = "preview";
+  function te(t) {
+    return !t || typeof t != "object"
+      ? g.PUBLISHED
+      : Z.indexOf(t.status) !== -1
+      ? t.status
+      : t.status === ee || t.isPublished === !1
+      ? g.SAVED
+      : g.PUBLISHED;
+  }
+  function P(t) {
+    return te(t) !== g.DRAFT;
+  }
+  function re() {
+    return typeof window == "undefined"
+      ? {}
+      : window.__motionkitHostData || window.motionkitData || {};
+  }
+  function O() {
+    return re().motionkit_token || null;
+  }
+  var H = () =>
+    typeof window == "undefined"
+      ? !1
+      : window.location.search.includes("action=motionkit-editor")
+      ? !0
+      : !!O();
+  var B = "__motionkitOwnership";
+  function m() {
+    let t = typeof window != "undefined" ? window : globalThis;
+    return (
+      t[B] ||
+        (t[B] = {
+          ownerByEl: new WeakMap(),
+          elsByAnim: new Map(),
+          animsByAnim: new Map(),
+          resetByAnim: new Map(),
+        }),
+      t[B]
+    );
+  }
+  m();
+  function q(t, e) {
+    t && m().animsByAnim.set(t, e || []);
+  }
+  function U(t, e) {
+    !t || typeof e != "function" || m().resetByAnim.set(t, e);
+  }
+  function ne(t, e, n) {
+    let o = t.elsByAnim.get(e);
+    o || ((o = new Set()), t.elsByAnim.set(e, o)), o.add(n);
+  }
+  function x(t, e) {
+    if (!e || !t || !t.length) return !1;
+    let n = m(),
+      o = new Map();
+    return (
+      t.forEach((r) => {
+        var i;
+        if (!r) return;
+        let c = n.ownerByEl.get(r);
+        c && c !== e && (o.has(c) || o.set(c, []), o.get(c).push(r)),
+          n.ownerByEl.set(r, e),
+          ne(n, e, r),
+          (i = r.setAttribute) == null ||
+            i.call(r, "data-motionkit-anim-id", e);
+      }),
+      o.size
+        ? (o.forEach((r, c) => {
+            (n.animsByAnim.get(c) || []).forEach((u) => {
+              var s;
+              try {
+                (s = u.pause) == null || s.call(u);
+              } catch (f) {}
+            });
+            let i = n.resetByAnim.get(c);
+            if (i)
+              try {
+                i(r);
+              } catch (u) {
+                console.warn("[motionkit] ownership reset error:", u);
+              }
+          }),
+          !0)
+        : !1
+    );
+  }
+  function F(t) {
+    let e = m(),
+      n = e.elsByAnim.get(t);
+    n &&
+      (n.forEach((o) => {
+        e.ownerByEl.get(o) === t && e.ownerByEl.delete(o);
+      }),
+      e.elsByAnim.delete(t)),
+      e.animsByAnim.delete(t),
+      e.resetByAnim.delete(t);
+  }
+  var D = "__motionkitScreen";
+  function N(t) {
+    let e = t || (typeof window != "undefined" ? window : null);
+    return e
+      ? (e[D] || (e[D] = { held: !1, queue: [], deadline: 12e3 }), e[D])
+      : { held: !1, queue: [], deadline: 12e3 };
+  }
+  function K(t) {
+    try {
+      t();
+    } catch (e) {
+      console.error("[motionkit] a screen-release waiter threw", e);
+    }
+  }
+  function W(t) {
+    return N(t).held === !0;
+  }
+  function $(t, e) {
+    let n = N(t);
+    if (!n.held) {
+      K(e);
+      return;
+    }
+    let o = !1,
+      r = () => {
+        o || ((o = !0), K(e));
+      };
+    n.queue.push(r);
+    let c = t || window;
+    c && typeof c.setTimeout == "function" && c.setTimeout(r, n.deadline + 400);
+  }
+  var R = "__motionkitSplits",
+    G = "__no_owner__";
+  function C() {
+    let t = typeof window != "undefined" ? window : globalThis;
+    return (
+      t[R] || (t[R] = { bySig: new Map(), elKeys: new WeakMap(), seq: 0 }), t[R]
+    );
+  }
+  function oe(t) {
+    if (typeof t == "string") return t;
+    if (!t || t.nodeType !== 1) return String(t);
+    let e = C(),
+      n = e.elKeys.get(t);
+    return n || ((e.seq += 1), (n = `__el${e.seq}`), e.elKeys.set(t, n)), n;
+  }
+  function ie(t, e) {
+    return `${oe(t)}::${JSON.stringify(e || {})}`;
+  }
+  function se(t, e) {
+    if (typeof SplitText == "undefined") return null;
+    try {
+      return typeof SplitText.create == "function"
+        ? SplitText.create(t, e)
+        : new SplitText(t, e);
+    } catch (n) {
+      return console.warn("[motionkit] SplitText failed for", t, n), null;
+    }
+  }
+  function ce(t) {
+    var e, n;
+    try {
+      (n = (e = t.split) == null ? void 0 : e.revert) == null || n.call(e);
+    } catch (o) {}
+  }
+  function Y(t, e, n) {
+    if (!e) return null;
+    let o = t || G,
+      r = C(),
+      c = ie(e, n),
+      i = r.bySig.get(c);
+    if (i) return i.owners.add(o), i;
+    let u = null;
+    if (
+      (r.bySig.forEach((d) => {
+        !u && d.target === e && (u = d);
+      }),
+      u)
+    )
+      return u.owners.add(o), u;
+    let s = se(e, n);
+    if (!s) return null;
+    let f = { split: s, target: e, sig: c, owners: new Set([o]) };
+    return r.bySig.set(c, f), f;
+  }
+  function z(t) {
+    let e = t || G,
+      n = C();
+    n.bySig.forEach((o, r) => {
+      o.owners.has(e) &&
+        (o.owners.delete(e), o.owners.size === 0 && (ce(o), n.bySig.delete(r)));
+    });
+  }
+  function ue(t) {
+    return typeof t != "string" || t.includes("chars")
+      ? "chars"
+      : t.includes("words")
+      ? "words"
+      : t.includes("lines")
+      ? "lines"
+      : "chars";
+  }
+  function V(t, e) {
+    var o, r;
+    if (!t) return null;
+    let n = ue(e);
+    if ((o = t[n]) != null && o.length) return t[n];
+    for (let c of ["chars", "words", "lines"])
+      if ((r = t[c]) != null && r.length) return t[c];
+    return null;
+  }
+  var fe = "data-motionkit-anim-id",
+    le = [
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "p",
+      "span",
+      "div",
+      "a",
+      "img",
+      "video",
+      "button",
+      "li",
+      "ul",
+      "ol",
+      "section",
+      "article",
+      "header",
+      "footer",
+      "nav",
+      "main",
+      "aside",
+    ];
+  function ae(t) {
+    if (!t || typeof t != "string") return "";
+    let e = t.trim();
+    return e.startsWith(".") ||
+      e.startsWith("#") ||
+      e.startsWith("[") ||
+      e.startsWith(":") ||
+      e.includes(" ") ||
+      e.includes(">") ||
+      e.includes(",") ||
+      le.includes(e.toLowerCase())
+      ? e
+      : "." + e;
+  }
+  var j = new Set();
+  function de(t, e, n) {
+    let o = t + "|" + e;
+    j.has(o) || (j.add(o), console.warn(`[${t}] ${n}`));
+  }
+  function _(t, e, n) {
+    if (!e || typeof e != "string") return [];
+    let o = n || document,
+      r = ae(e);
+    try {
+      let c = o.querySelectorAll(r);
+      if (c.length || r === e) return [...c];
+    } catch (c) {}
+    try {
+      return [...o.querySelectorAll(e)];
+    } catch (c) {
+      return de(t, e, `invalid selector "${e}": ${c.message}`), [];
+    }
+  }
+  function pe() {
+    return {
+      listeners: [],
+      scrollTriggers: [],
+      animations: [],
+      elements: [],
+      tweenRestores: [],
+      structuralRestores: [],
+      cleanups: [],
+    };
+  }
+  function p(t, e, n) {
+    try {
+      n();
+    } catch (o) {
+      console.warn(`[${t}] ${e} teardown error:`, o);
+    }
+  }
+  function X(t, e, n) {
+    n.listeners.forEach(({ el: r, type: c, fn: i, opts: u }) =>
+      p(t, "listener", () => r.removeEventListener(c, i, u)),
+    ),
+      n.scrollTriggers.forEach((r) =>
+        p(t, "scrollTrigger", () => (r == null ? void 0 : r.kill())),
+      );
+    let o =
+      typeof window != "undefined" && window.ScrollTrigger
+        ? window.ScrollTrigger.getById(e)
+        : null;
+    o && p(t, "scrollTrigger", () => o.kill()),
+      n.animations.forEach((r) =>
+        p(t, "animation", () => {
+          var c, i;
+          (c = r == null ? void 0 : r.revert) == null || c.call(r),
+            (i = r == null ? void 0 : r.kill) == null || i.call(r);
+        }),
+      ),
+      n.elements.forEach((r) =>
+        p(t, "element", () => {
+          var c;
+          return (c = r == null ? void 0 : r.remove) == null
+            ? void 0
+            : c.call(r);
+        }),
+      ),
+      n.tweenRestores.forEach((r) => p(t, "style", r)),
+      n.structuralRestores.forEach((r) => p(t, "style", r)),
+      p(t, "split", () => z(e));
+    for (let r = n.cleanups.length - 1; r >= 0; r--)
+      p(t, "cleanup", n.cleanups[r]);
+  }
+  function we(t, e, n, o, r) {
+    var c;
+    return {
+      id: e.id,
+      targets: n,
+      data: o,
+      vars: e.vars || {},
+      markers: ((c = e.vars) == null ? void 0 : c.markers) === !0 && H(),
+      get triggers() {
+        var s;
+        let i =
+            ((s = e.trigger) == null ? void 0 : s.selector) || e.triggerClass,
+          u = i ? _(t, i) : [];
+        return u.length ? u : n;
+      },
+      select: (i, u) => _(t, i, u),
+      on(i, u, s, f) {
+        i &&
+          (i.addEventListener(u, s, f),
+          r.listeners.push({ el: i, type: u, fn: s, opts: f }));
+      },
+      add(i) {
+        return i && r.animations.push(i), i;
+      },
+      addScrollTrigger(i) {
+        return i && r.scrollTriggers.push(i), i;
+      },
+      addElement(i) {
+        return i && r.elements.push(i), i;
+      },
+      split(i, u) {
+        let s = Y(e.id, i, u);
+        return s ? V(s.split, u == null ? void 0 : u.type) || [] : [];
+      },
+      clearProps(i, u) {
+        i && r.tweenRestores.push(() => gsap.set(i, { clearProps: u }));
+      },
+      restoreStyle(i, u) {
+        if (!i) return;
+        let s = {};
+        u.forEach((f) => (s[f] = i.style[f])),
+          r.structuralRestores.push(() => {
+            u.forEach((f) => {
+              var d;
+              return (i.style[f] = (d = s[f]) != null ? d : "");
+            });
+          });
+      },
+      claim() {
+        let i = x(n, e.id);
+        return (
+          i &&
+            r.animations.forEach((u) => {
+              var s;
+              try {
+                (s = u.invalidate) == null || s.call(u);
+              } catch (f) {}
+            }),
+          i
+        );
+      },
+      onCleanup(i) {
+        typeof i == "function" && r.cleanups.push(i);
+      },
+    };
+  }
+  function I(t, e) {
+    let n = e.label || t,
+      o = e.requires || ["itemClass"];
+    M(t, function () {
+      let r = new Map();
+      function c(s) {
+        let f = r.get(s);
+        f && (r.delete(s), F(s), X(n, s, f));
+      }
+      function i() {
+        for (let s of [...r.keys()]) c(s);
+        typeof e.teardownGlobal == "function" &&
+          p(n, "global", e.teardownGlobal);
+      }
+      function u(s) {
+        var A;
+        if (!s || typeof s != "object" || !P(s) || o.some((l) => !s[l])) return;
+        let f,
+          d = null;
+        if (typeof e.resolve == "function") {
+          let l = e.resolve(s, { select: (E, a) => _(n, E, a) });
+          if (
+            (Array.isArray(l)
+              ? (f = l)
+              : l && ((f = l.targets), (d = (A = l.data) != null ? A : null)),
+            !f)
+          )
+            return;
+        } else if (((f = _(n, s.itemClass)), !f.length)) return;
+        if ((c(s.id), f.forEach((l) => l.setAttribute(fe, s.id)), s.mkInert))
+          return;
+        let w = pe(),
+          v = we(n, s, f, d, w);
+        r.set(s.id, w);
+        let S = () => {
+          var E;
+          if (r.get(s.id) !== w) return;
+          try {
+            e.build(s, v);
+          } catch (a) {
+            console.error(`[${n}] build failed:`, a),
+              r.delete(s.id),
+              X(n, s.id, w);
+            return;
+          }
+          q(s.id, w.animations),
+            U(s.id, () =>
+              w.tweenRestores.forEach((a) => p(n, "ownership reset", a)),
+            );
+          let l = (E = s.trigger) == null ? void 0 : E.type;
+          l !== "click" && l !== "hover" && x(f, s.id);
+        };
+        W(window) ? $(window, S) : S();
+      }
+      return { run: u, teardown: i };
+    });
+  }
+  var he = "motionkit-mk-text-swipe-pa",
+    ge = "#5fbff9",
+    ye = "#f06543";
+  function Ee(t) {
+    return t === "right"
+      ? "right center"
+      : t === "center"
+      ? "center center"
+      : "left center";
+  }
+  function Se(t, e, n) {
+    t.style.position = "relative";
+    let o = document.createElement("span");
+    return (
+      Object.assign(o.style, {
+        position: "absolute",
+        inset: "0",
+        backgroundColor: e,
+        transformOrigin: n,
+        transform: "scaleX(0)",
+        pointerEvents: "none",
+        zIndex: "2",
+        visibility: "visible",
+      }),
+      t.appendChild(o),
+      o
+    );
+  }
+  I(he, {
+    label: "textSwipe",
+    build(t, e) {
+      let { trigger: { type: n, selector: o } = {} } = t,
+        {
+          splitType: r = "lines",
+          direction: c = "left",
+          bar1Color: i = ge,
+          bar2Color: u = ye,
+          start: s,
+          startCustom: f,
+          end: d,
+          endCustom: w,
+          delay: v = 0,
+          duration: S = 0.5,
+          stagger: A = 0.12,
+          ease: l = "power2.inOut",
+        } = e.vars,
+        E = Ee(c),
+        a = [];
+      if (r === "element") a = [...e.targets];
+      else {
+        let y = r === "words" ? "words" : "lines";
+        e.targets.forEach((h) => a.push(...e.split(h, { type: y })));
+      }
+      if (!a.length) return;
+      let J = a.map((y, h) => e.addElement(Se(y, h % 2 === 0 ? i : u, E)));
+      e.clearProps(a, "opacity,visibility,position");
+      let b = n === "click" || n === "hover",
+        T = e.add(
+          gsap.timeline({
+            paused: b,
+            delay: n === "play_with_scroll" ? 0 : v,
+            scrollTrigger:
+              n === "page_load" || b
+                ? void 0
+                : {
+                    id: e.id,
+                    trigger: o || t.itemClass,
+                    start: s === "custom" ? f : s || "top 80%",
+                    end: d === "custom" ? w : d || "bottom top",
+                    scrub: n === "play_with_scroll",
+                    markers: e.markers,
+                  },
+          }),
+        );
+      if (
+        (T.set(a, { visibility: "hidden" }, 0),
+        J.forEach((y, h) => {
+          let L = h * A;
+          T.to(y, { scaleX: 1, duration: S, ease: l, repeat: 1, yoyo: !0 }, L),
+            T.set(a[h], { visibility: "visible" }, L + S);
+        }),
+        b)
+      ) {
+        let y = n === "click" ? "click" : "mouseenter";
+        e.triggers.forEach((h) =>
+          e.on(h, y, () => {
+            e.claim(), T.restart(!0);
+          }),
+        );
+      }
+    },
+  });
+})();

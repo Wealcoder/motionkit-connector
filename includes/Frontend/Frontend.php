@@ -767,14 +767,19 @@ final class Frontend
     $is_custom = false;
     $global_settings = $this->get_global_settings();
 
+    // Free animations belong to the wp.org plugin's WAAPI runtime, which this plugin never carries. Detection runs on the pro half only: a free record's `timeline` would otherwise enqueue the custom engine, and its `splitText` key GSAP's SplitText, for an animation neither can play.
+    $pro_configs = array_values(array_filter($page_configs, function ($config) {
+      return !self::is_free_animation($config);
+    }));
+
     // Preset detection reads the same list that will be dispatched, so a shared draft's bundle is enqueued while an ordinary visit never loads it.
-    $active_presets = $this->get_active_presets($page_configs, $is_custom);
+    $active_presets = $this->get_active_presets($pro_configs, $is_custom);
 
     do_action('motionkit/frontend/before_enqueue_scripts', $page_configs, $global_settings);
 
     $deps = apply_filters('motionkit_core_lib_deps', []);
 
-    $active_plugins = $this->get_active_plugins($page_configs, $is_custom);
+    $active_plugins = $this->get_active_plugins($pro_configs, $is_custom);
     if (!empty($active_plugins)) {
       $deps = array_merge($deps, $active_plugins);
     }
@@ -799,7 +804,42 @@ final class Frontend
     $this->enqueue_preset_bundles($active_presets, $is_custom, $deps, $enqueued_handles);
 
     $frontend_deps = array_values(array_unique(array_merge($deps, $enqueued_handles)));
-    $this->enqueue_core_frontend($page_configs, $is_custom, $frontend_deps);
+
+    // With the wp.org plugin active the free half is its to play, and dispatching it here too would have the router warn about an engine that is in fact on the page. Without it the free records still go through, so the router's once-per-page warning names why they are silent.
+    $dispatch = defined('MOTIONKIT_LOADED') ? $pro_configs : $page_configs;
+    $this->enqueue_core_frontend($dispatch, $is_custom, $frontend_deps);
+  }
+
+  /**
+   * Whether a record runs on the free WAAPI runtime rather than this engine.
+   *
+   * Mirrors MotionKit\Common\AnimationEngine::is_waapi() in the wp.org plugin
+   * and isWaapiAnimation() in the engine source; the three must agree on what
+   * a free record looks like.
+   *
+   * @param mixed $config Stored animation record.
+   * @return bool
+   */
+  private static function is_free_animation($config): bool
+  {
+    if (!is_array($config)) {
+      return false;
+    }
+
+    if (isset($config['engine']) && $config['engine'] === 'waapi') {
+      return true;
+    }
+
+    if (isset($config['runtime']['engine']) && $config['runtime']['engine'] === 'waapi') {
+      return true;
+    }
+
+    if (isset($config['group']) && $config['group'] === 'free_animation') {
+      return true;
+    }
+
+    return isset($config['presetKey']) && is_string($config['presetKey'])
+      && strpos($config['presetKey'], 'motionkit-free-') === 0;
   }
 
   /**

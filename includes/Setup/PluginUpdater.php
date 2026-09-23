@@ -155,7 +155,7 @@ final class PluginUpdater
         $messages = [
             'available'  => ['success', __('A new version of MotionKit Connector is available. Use "update now" in its row below.', 'motionkit-connector')],
             'current'    => ['success', __('MotionKit Connector is up to date.', 'motionkit-connector')],
-            'no_license' => ['warning', __('MotionKit Connector updates need a MotionKit license key on this site. Enter it in the License key field under MotionKit Connector below, then check again.', 'motionkit-connector')],
+            'no_license' => ['warning', __('MotionKit Connector updates are not enabled on this site yet. Connect it to your licensed MotionKit account, or enter your license key under MotionKit Connector below, then check again.', 'motionkit-connector')],
             'error'      => ['error', __('Could not reach the MotionKit update server. Please try again in a few minutes.', 'motionkit-connector')],
         ];
 

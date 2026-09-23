@@ -66,31 +66,43 @@ final class LicenseKeyField
         }
 
         $manual = LicenseStatus::get_manual_key();
+
+        // The connected account already supplies the key, so there is nothing to ask for; the row only appears for a key typed in by hand or a site with none.
+        if ($manual === '' && LicenseStatus::get_license_key() !== '') {
+            return;
+        }
+
         $active = is_plugin_active($this->basename) ? ' active' : '';
         $columns = _get_list_table('WP_Plugins_List_Table')->get_column_count();
 
         printf('<tr class="plugin-update-tr%s"><td colspan="%d" class="plugin-update colspanchange">', esc_attr($active), (int) $columns);
-        echo '<div class="notice inline notice-info notice-alt"><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0;">';
+        echo '<div class="notice inline notice-info notice-alt"><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
         echo '<input type="hidden" name="action" value="' . esc_attr(self::SAVE_ACTION) . '">';
         wp_nonce_field(self::SAVE_ACTION);
 
-        printf('<label for="motionkit-connector-license-key"><strong>%s</strong></label>', esc_html__('License key', 'motionkit-connector'));
-        printf(
-            // Pinned to the small-button height; WordPress's admin inputs are taller and made the one-line row look like a form section.
-            '<input type="password" id="motionkit-connector-license-key" name="license_key" class="regular-text" autocomplete="off" placeholder="%s" style="min-height:26px;height:26px;line-height:24px;padding:0 8px;font-size:13px;">',
-            esc_attr($manual !== '' ? sprintf(__('Saved key ending in %s', 'motionkit-connector'), substr($manual, -4)) : __('Paste your MotionKit license key', 'motionkit-connector'))
-        );
-        submit_button(__('Save key', 'motionkit-connector'), 'secondary small', 'motionkit_save_key', false);
-
         if ($manual !== '') {
+            printf(
+                /* translators: %s: last four characters of the saved license key. */
+                '<p>' . esc_html__('Updates are enabled with the license key ending in %s.', 'motionkit-connector') . ' ',
+                '<code>' . esc_html(substr($manual, -4)) . '</code>'
+            );
             submit_button(__('Remove key', 'motionkit-connector'), 'link-delete small', 'motionkit_remove_key', false);
+            echo '</p></form></div></td></tr>';
+            return;
         }
 
+        // Collapsed by default: connecting the site is the normal way to enable updates, and the field is only the fallback for when that did not provide a key.
+        printf('<details><summary style="cursor:pointer;margin:8px 0;">%s</summary>', esc_html__('Updates are not enabled yet. Enter your license key', 'motionkit-connector'));
+        echo '<p style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">';
         printf(
-            '<span class="description">%s</span>',
-            esc_html__('Enables automatic updates. Find your key in your MotionKit account.', 'motionkit-connector')
+            // type=text rather than password so browsers do not offer saved logins for it; min-height pins it to the small button.
+            '<input type="text" id="motionkit-connector-license-key" name="license_key" class="regular-text code" autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true" aria-label="%1$s" placeholder="%2$s" style="min-height:26px;height:26px;padding:0 8px;">',
+            esc_attr__('License key', 'motionkit-connector'),
+            esc_attr__('Paste your MotionKit license key', 'motionkit-connector')
         );
-        echo '</form></div></td></tr>';
+        submit_button(__('Save key', 'motionkit-connector'), 'secondary small', 'motionkit_save_key', false);
+        printf('<span class="description">%s</span>', esc_html__('Find it in your MotionKit account under Licenses.', 'motionkit-connector'));
+        echo '</p></details></form></div></td></tr>';
     }
 
     public function handle_save(): void

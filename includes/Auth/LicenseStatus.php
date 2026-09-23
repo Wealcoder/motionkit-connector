@@ -29,6 +29,8 @@ final class LicenseStatus
   private const OPT_STATE = 'motionkit_license_state';
   // Kept out of OPT_STATE because the state is read for display; the key is a credential only the updater should touch.
   private const OPT_KEY = 'motionkit_license_key';
+  // A key typed into the Plugins-row field; separate from OPT_KEY because the server's answer (disconnect, no license on the connected account) must not wipe a key the site owner entered themselves.
+  private const OPT_MANUAL_KEY = 'motionkit_license_key_manual';
   private const TRANSIENT_FRESH = 'motionkit_license_fresh';
   private const TRANSIENT_LOCK = 'motionkit_license_lock';
   public const CRON_HOOK = 'motionkit_license_refresh';
@@ -66,11 +68,33 @@ final class LicenseStatus
       && empty($state['limit_exceeded']);
   }
 
+  // The server's key wins because it always belongs to the connected account; the manual key covers a server that does not send one yet, or a site that is not connected.
   public static function get_license_key(): string
   {
     $key = get_option(self::OPT_KEY, '');
 
+    if (is_string($key) && '' !== $key) {
+      return $key;
+    }
+
+    return self::get_manual_key();
+  }
+
+  public static function get_manual_key(): string
+  {
+    $key = get_option(self::OPT_MANUAL_KEY, '');
+
     return is_string($key) ? $key : '';
+  }
+
+  public static function set_manual_key(string $key): void
+  {
+    if ('' === $key) {
+      delete_option(self::OPT_MANUAL_KEY);
+      return;
+    }
+
+    update_option(self::OPT_MANUAL_KEY, $key, false);
   }
 
   public static function is_indeterminate(): bool

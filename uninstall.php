@@ -36,6 +36,7 @@ $mk_options = [
     'motionkit_connected_email',
     'motionkit_license_state',
     'motionkit_license_key',
+    'motionkit_license_key_manual',
     'motionkit_enc_fallback_key',
     // Store updater cache and outage back-off (PluginUpdater).
     'motionkit_connector_update_info',

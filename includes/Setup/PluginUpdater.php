@@ -21,17 +21,17 @@ if (!defined('ABSPATH')) {
  * Serves Connector updates from the MotionKit store (EDD Software Licensing).
  *
  * The store only hands out a package for a license that is valid for the item on
- * this site's URL. The site is activated on the license when it connects, and
- * LicenseStatus receives the key from the editor server, so a site with no
- * license key never registers the updater at all.
+ * this site's URL. The key comes from the editor server (LicenseStatus) or from
+ * the Plugins-row field (LicenseKeyField); a site with neither never registers
+ * the updater at all.
  *
  * @package MotionKitConnector
  * @since 1.0.0
  */
 final class PluginUpdater
 {
-    private const STORE_URL = 'https://my.motionkit.io/';
-    private const ITEM_ID = 17;
+    public const STORE_URL = 'https://my.motionkit.io/';
+    public const ITEM_ID = 17;
     private const CACHE_OPTION = 'motionkit_connector_update_info';
     private const FAILED_OPTION = 'motionkit_connector_update_failed';
     private const CACHE_TTL = 3 * HOUR_IN_SECONDS;
@@ -155,7 +155,7 @@ final class PluginUpdater
         $messages = [
             'available'  => ['success', __('A new version of MotionKit Connector is available. Use "update now" in its row below.', 'motionkit-connector')],
             'current'    => ['success', __('MotionKit Connector is up to date.', 'motionkit-connector')],
-            'no_license' => ['warning', __('MotionKit Connector updates need an active MotionKit license on this site. Connect this site to a licensed MotionKit account, then check again.', 'motionkit-connector')],
+            'no_license' => ['warning', __('MotionKit Connector updates need a MotionKit license key on this site. Enter it in the License key field under MotionKit Connector below, then check again.', 'motionkit-connector')],
             'error'      => ['error', __('Could not reach the MotionKit update server. Please try again in a few minutes.', 'motionkit-connector')],
         ];
 

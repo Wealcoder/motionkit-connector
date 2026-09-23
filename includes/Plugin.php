@@ -212,6 +212,7 @@ final class Plugin
     private function init_updater(): void
     {
         (new \MotionKitConnector\Setup\PluginUpdater($this->plugin_file))->init();
+        (new \MotionKitConnector\Setup\LicenseKeyField($this->plugin_file))->init();
     }
 
     /**

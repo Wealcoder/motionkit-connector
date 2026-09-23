@@ -1,10 +1,10 @@
 {
-  "sourceHash": "a21d248f8f47330b39a62cabb6cf9e3ce90584c38d56e74d09ba22c878669908",
+  "sourceHash": "f62665e227ebe1efde1ccc9b4c012cd11ad82c1805f0e77d4cee1ce71f23e56f",
   "sourceFileCount": 157,
   "entries": 53,
   "target": "connector",
   "devtools": false,
   "devLog": false,
-  "gitCommit": "fab5f598d91334e30e8a84c1be23ff3db0eb11a7",
-  "builtAt": "2026-09-23T11:55:01.193Z"
+  "gitCommit": "41dd06e0e29d8c8d5aec749d70061256d0278690",
+  "builtAt": "2026-09-23T12:02:28.140Z"
 }

@@ -380,6 +380,11 @@ final class LicenseStatus
       return;
     }
 
+    // An editor build that predates the key sends no `key` field at all, which says nothing about the key — only an explicit empty value, or no license, clears it.
+    if (!empty($state['exists']) && !array_key_exists('key', (array) ($body['license'] ?? []))) {
+      return;
+    }
+
     delete_option(self::OPT_KEY);
   }
 

@@ -10,6 +10,7 @@
 namespace MotionKitConnector\Setup;
 
 use MotionKitConnector\Auth\LicenseStatus;
+use MotionKitConnector\Auth\OAuthHandler;
 
 // Prevent direct access
 if (!defined('ABSPATH')) {
@@ -35,6 +36,8 @@ final class PluginUpdater
     private const FAILED_OPTION = 'motionkit_connector_update_failed';
     private const CACHE_TTL = 3 * HOUR_IN_SECONDS;
     private const RETRY_AFTER = HOUR_IN_SECONDS;
+    private const CHECK_ACTION = 'motionkit_connector_check_update';
+    private const CHECK_RESULTS = ['available', 'current', 'no_license', 'error'];
 
     private string $basename;
     private string $slug;
@@ -54,14 +57,115 @@ final class PluginUpdater
             return;
         }
 
+        // The manual check is registered even without a key, because fetching the key is the first thing it does.
+        add_filter('plugin_row_meta', [$this, 'row_meta'], 10, 2);
+        add_action('admin_post_' . self::CHECK_ACTION, [$this, 'handle_manual_check']);
+        add_action('admin_notices', [$this, 'render_check_notice']);
+
         $this->license = LicenseStatus::get_license_key();
 
         if ('' === $this->license) {
             return;
         }
 
+        $this->register_update_hooks();
+    }
+
+    private function register_update_hooks(): void
+    {
+        if (has_filter('pre_set_site_transient_update_plugins', [$this, 'check_update'])) {
+            return;
+        }
+
         add_filter('pre_set_site_transient_update_plugins', [$this, 'check_update']);
         add_filter('plugins_api', [$this, 'plugins_api'], 10, 3);
+    }
+
+    /**
+     * "Check for updates" in the Connector's own Plugins-list row.
+     *
+     * @param array  $meta
+     * @param string $plugin_file
+     * @return array
+     */
+    public function row_meta(array $meta, string $plugin_file): array
+    {
+        if ($plugin_file !== $this->basename || !current_user_can('update_plugins')) {
+            return $meta;
+        }
+
+        $meta[] = sprintf(
+            '<a href="%s">%s</a>',
+            esc_url(wp_nonce_url(admin_url('admin-post.php?action=' . self::CHECK_ACTION), self::CHECK_ACTION)),
+            esc_html__('Check for updates', 'motionkit-connector')
+        );
+
+        return $meta;
+    }
+
+    public function handle_manual_check(): void
+    {
+        if (!current_user_can('update_plugins')) {
+            wp_die(esc_html__('You do not have permission to perform this action.', 'motionkit-connector'));
+        }
+
+        check_admin_referer(self::CHECK_ACTION);
+
+        // Refresh first so a site that connected before the server started sending the key picks it up now rather than at the next daily refresh.
+        if (OAuthHandler::is_connected()) {
+            LicenseStatus::refresh(true);
+        }
+
+        $this->license = LicenseStatus::get_license_key();
+        $result = 'no_license';
+
+        if ('' !== $this->license) {
+            delete_option(self::CACHE_OPTION);
+            delete_option(self::FAILED_OPTION);
+            $this->register_update_hooks();
+
+            // Deleting the transient lifts wp_update_plugins()'s own throttle, and its rewrite of the transient is what runs check_update().
+            delete_site_transient('update_plugins');
+            wp_update_plugins();
+
+            $transient = get_site_transient('update_plugins');
+
+            if (isset($transient->response[$this->basename])) {
+                $result = 'available';
+            } elseif (isset($transient->no_update[$this->basename])) {
+                $result = 'current';
+            } else {
+                $result = 'error';
+            }
+        }
+
+        wp_safe_redirect(add_query_arg('motionkit_update_check', $result, self_admin_url('plugins.php')));
+        exit;
+    }
+
+    public function render_check_notice(): void
+    {
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- display only; the value is matched against a fixed list.
+        $result = isset($_GET['motionkit_update_check']) ? sanitize_key(wp_unslash($_GET['motionkit_update_check'])) : '';
+
+        if (!in_array($result, self::CHECK_RESULTS, true) || !current_user_can('update_plugins')) {
+            return;
+        }
+
+        $messages = [
+            'available'  => ['success', __('A new version of MotionKit Connector is available. Use "update now" in its row below.', 'motionkit-connector')],
+            'current'    => ['success', __('MotionKit Connector is up to date.', 'motionkit-connector')],
+            'no_license' => ['warning', __('MotionKit Connector updates need an active MotionKit license on this site. Connect this site to a licensed MotionKit account, then check again.', 'motionkit-connector')],
+            'error'      => ['error', __('Could not reach the MotionKit update server. Please try again in a few minutes.', 'motionkit-connector')],
+        ];
+
+        [$type, $message] = $messages[$result];
+
+        printf(
+            '<div class="notice notice-%1$s is-dismissible"><p>%2$s</p></div>',
+            esc_attr($type),
+            esc_html($message)
+        );
     }
 
     /**

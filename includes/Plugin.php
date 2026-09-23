@@ -36,7 +36,7 @@ final class Plugin
     /**
      * Plugin version
      */
-    public const VERSION = '1.0.0';
+    public const VERSION = '1.0.1';
 
     /**
      * Plugin name
@@ -199,8 +199,20 @@ final class Plugin
         $this->init_rest_api();
         $this->init_dependency_installer();
         $this->init_plugin_row_links();
+        $this->init_updater();
 
         do_action('MOTIONKIT_EXTENSION_LOADED');
+    }
+
+    /**
+     * Register the store updater, which serves Connector updates to licensed sites.
+     *
+     * @return void
+     */
+    private function init_updater(): void
+    {
+        (new \MotionKitConnector\Setup\PluginUpdater($this->plugin_file))->init();
+        (new \MotionKitConnector\Setup\LicenseKeyField($this->plugin_file))->init();
     }
 
     /**

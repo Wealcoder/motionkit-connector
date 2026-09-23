@@ -9,6 +9,8 @@ build/
 !assets/build/
 
 log/
+# Release zips from `npm run release`.
+dist/
 .DS_Store
 .project
 Thumbs.db

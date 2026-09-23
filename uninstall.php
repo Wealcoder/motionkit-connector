@@ -35,7 +35,11 @@ $mk_options = [
     'motionkit_connected_at',
     'motionkit_connected_email',
     'motionkit_license_state',
+    'motionkit_license_key',
     'motionkit_enc_fallback_key',
+    // Store updater cache and outage back-off (PluginUpdater).
+    'motionkit_connector_update_info',
+    'motionkit_connector_update_failed',
     // Legacy pre-OAuth connection settings (read by JwtTokenManager::get_secret).
     'motionkit_editor_url',
     'motionkit_api_key',

@@ -27,6 +27,8 @@ if (!defined('ABSPATH')) {
 final class LicenseStatus
 {
   private const OPT_STATE = 'motionkit_license_state';
+  // Kept out of OPT_STATE because the state is read for display; the key is a credential only the updater should touch.
+  private const OPT_KEY = 'motionkit_license_key';
   private const TRANSIENT_FRESH = 'motionkit_license_fresh';
   private const TRANSIENT_LOCK = 'motionkit_license_lock';
   public const CRON_HOOK = 'motionkit_license_refresh';
@@ -62,6 +64,13 @@ final class LicenseStatus
     return !empty($state['exists'])
       && 'active' === $state['status']
       && empty($state['limit_exceeded']);
+  }
+
+  public static function get_license_key(): string
+  {
+    $key = get_option(self::OPT_KEY, '');
+
+    return is_string($key) ? $key : '';
   }
 
   public static function is_indeterminate(): bool
@@ -154,6 +163,7 @@ final class LicenseStatus
 
     if (404 === $code) {
       self::store(self::normalize(['exists' => false, 'status' => 'none']));
+      delete_option(self::OPT_KEY);
 
       return new \WP_Error(
         'site_not_launched',
@@ -178,6 +188,7 @@ final class LicenseStatus
       // get_state() on the very next load and pin the site to "Unable to verify"
       // forever. normalize() stamps checked_at=time() so 'none' actually sticks.
       self::store(self::normalize(['exists' => false, 'status' => 'none']));
+      delete_option(self::OPT_KEY);
 
       return self::get_state();
     }
@@ -191,6 +202,7 @@ final class LicenseStatus
     $state = self::normalize($body);
     $state['token_stale'] = !empty($body['token_stale']);
     self::store($state);
+    self::store_key($body, $state);
 
     return self::get_state();
   }
@@ -268,6 +280,7 @@ final class LicenseStatus
   public static function clear(): void
   {
     delete_option(self::OPT_STATE);
+    delete_option(self::OPT_KEY);
     delete_transient(self::TRANSIENT_FRESH);
     delete_transient(self::TRANSIENT_LOCK);
   }
@@ -351,6 +364,23 @@ final class LicenseStatus
   {
     update_option(self::OPT_STATE, $state, false);
     set_transient(self::TRANSIENT_FRESH, 1, self::FRESH_WINDOW);
+  }
+
+  private static function store_key(array $body, array $state): void
+  {
+    $key = sanitize_text_field((string) ($body['license']['key'] ?? ''));
+
+    if ('' !== $key) {
+      update_option(self::OPT_KEY, $key, false);
+      return;
+    }
+
+    // 'unknown' is a billing outage, not an answer, so the last good key keeps serving updates; a stale token gets no key from the server but still owns its license, so it keeps its key until a reconnect.
+    if ('unknown' === $state['status'] || !empty($state['token_stale'])) {
+      return;
+    }
+
+    delete_option(self::OPT_KEY);
   }
 
   private static function empty_state(): array

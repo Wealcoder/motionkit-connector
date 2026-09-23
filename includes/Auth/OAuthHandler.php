@@ -101,13 +101,13 @@ final class OAuthHandler
    */
   public function init(): void
   {
-    // The OAuth FLOW belongs to the free plugin: it owns the Connect page, ConnectPage::authorize_url() prefers its handler, and the state token lives in its motionkit_oauth_state option. Both plugins used to hook these, and whichever ran first answered — the connector, finding nothing in its own transient, redirected with error=invalid_state and exited before the handler holding the state could run. Registering nothing here leaves exactly one callback for one state store.
+    // The OAuth FLOW belongs to the free plugin (its Connect page, its handler, its state in motionkit_oauth_state), so the connector registers no callback at all while it is present; this must stay ahead of the priority-1 hook below, because read_state() accepts the free plugin's bare state string and would otherwise claim its callback first and store the token in a format the free plugin cannot decrypt.
     if (class_exists('\MotionKit\Auth\OAuthHandler')) {
       return;
     }
 
-    // Standalone connector (free plugin not installed) still needs its own flow.
-    add_action('admin_init', [$this, 'handle_callback']);
+    // Standalone connector (free plugin not installed) still needs its own flow. Priority 1, not the default 10: other plugins treat any wp-admin URL carrying `code` + `state` as their own OAuth callback and hard-fail on it — CrawlWP SEO's Yandex handler runs check_admin_referer('yandex_oauth_nonce', 'state') at priority 10, which wp_die()s with "The link you followed has expired." before our callback is ever reached. Running first lets this handler consume the code and exit on the redirect, so no later admin_init listener sees those params at all.
+    add_action('admin_init', [$this, 'handle_callback'], 1);
     add_action('admin_init', [$this, 'handle_disconnect']);
     add_action('admin_init', [$this, 'handle_verify']);
   }
@@ -171,11 +171,13 @@ final class OAuthHandler
     $state = bin2hex(random_bytes(32));
     self::store_state($state);
 
+    // `motionkit_state` is the dialect this build speaks; the bare `state` alongside it is what an editor deployed before the rename still reads, so the two sides can ship in either order. Both carry the same token, and the editor echoes back whichever pair it was asked in.
     $params = [
-      'state'         => $state,
-      'site'          => home_url('/'),
-      'response_type' => 'code',
-      'redirect_uri'  => $this->get_callback_url(),
+      'state'           => $state,
+      'motionkit_state' => $state,
+      'site'            => home_url('/'),
+      'response_type'   => 'code',
+      'redirect_uri'    => $this->get_callback_url(),
     ];
 
     if ($switch_account) {
@@ -226,24 +228,45 @@ final class OAuthHandler
     return admin_url('admin.php?page=motionkit-connect');
   }
 
+  // Reads one callback param, preferring the namespaced spelling and falling back to the bare one an editor deployed before the rename still sends. Unslashed and sanitized here; CSRF for this OAuth callback is enforced by the server-stored `state` token validated with hash_equals() in handle_callback(), not by a nonce.
+  private static function read_callback_param(string $name): string
+  {
+    // phpcs:disable WordPress.Security.NonceVerification.Recommended
+    if (isset($_GET['motionkit_' . $name])) {
+      return sanitize_text_field(wp_unslash($_GET['motionkit_' . $name]));
+    }
+
+    if (isset($_GET[$name])) {
+      return sanitize_text_field(wp_unslash($_GET[$name]));
+    }
+    // phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+    return '';
+  }
+
   public function handle_callback(): void
   {
-    if (!isset($_GET['page'], $_GET['code'], $_GET['state'])) {
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    if (!isset($_GET['page'])) {
       return;
     }
 
-    // Unslash + sanitize before comparing; CSRF for this OAuth callback is enforced by the server-stored `state` token validated with hash_equals() below.
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended
     $page = sanitize_key(wp_unslash($_GET['page']));
     if ($page !== 'motionkit-connect') {
+      return;
+    }
+
+    $code = self::read_callback_param('code');
+    $state = self::read_callback_param('state');
+
+    if ($code === '' || $state === '') {
       return;
     }
 
     if (!current_user_can('manage_options')) {
       return;
     }
-
-    $code = sanitize_text_field(wp_unslash($_GET['code']));
-    $state = sanitize_text_field(wp_unslash($_GET['state']));
 
     $stored_state = self::read_state();
 

@@ -165,6 +165,7 @@ final class LicenseStatus
       return new \WP_Error(
         'bad_response',
         sprintf(
+          /* translators: %d: HTTP status code returned by the MotionKit server. */
           __('Unexpected response from the MotionKit server (HTTP %d).', 'motionkit-connector'),
           $code
         )
@@ -428,6 +429,7 @@ final class LicenseStatus
 
     if ($state['limit_exceeded']) {
       $message = sprintf(
+        /* translators: 1: sites in use, 2: site limit of the plan. */
         __('This site is outside your MotionKit plan\'s site limit (%1$d of %2$d used). Free a slot or upgrade to keep using premium features here.', 'motionkit-connector'),
         $state['sites_used'],
         $state['sites_limit']

@@ -54,6 +54,34 @@ final class Frontend
   ];
 
   /**
+   * Every spelling one GSAP library's on/off toggle can be stored under.
+   *
+   * The toggles are named after WP script handles, but the vendor map in
+   * register_required_script() also carries the older camelCase alias for the
+   * same file, and a site saved by an older editor may hold either. A handle is
+   * looked up under both spellings so one switch governs one library.
+   *
+   * @var array<string,string>
+   */
+  private const GSAP_TOGGLE_ALIASES = [
+    'ScrollToPlugin'     => 'scrollTo',
+    'DrawSVGPlugin'      => 'drawSVG',
+    'MorphSVGPlugin'     => 'morphSVG',
+    'MotionPathPlugin'   => 'motionPath',
+    'SplitText'          => 'splitText',
+    'TextPlugin'         => 'text',
+    'ScrambleTextPlugin' => 'scrambleText',
+    'Flip'               => 'flip',
+    'Draggable'          => 'draggable',
+    'InertiaPlugin'      => 'inertia',
+    'Physics2DPlugin'    => 'physics2D',
+    'PhysicsPropsPlugin' => 'physicsProps',
+    'CustomEase'         => 'customEase',
+    'CustomWiggle'       => 'customWiggle',
+    'CustomBounce'       => 'customBounce',
+  ];
+
+  /**
    * Asset loader instance
    *
    * @var AssetLoader
@@ -690,12 +718,16 @@ final class Frontend
         }
       }
 
-      if ($is_optional) {
-        $enabled = isset($gsap_plugin[$handle]) && filter_var($gsap_plugin[$handle], FILTER_VALIDATE_BOOLEAN);
-        if (!$enabled && !isset($default_cdns[$handle])) {
-          $this->unavailable_gsap_handles[$handle] = true;
-          continue;
-        }
+      // A library the user switched OFF is not registered at all, and that is what makes the switch mean something: every enqueue path downstream asks only `wp_script_is($handle, 'registered')`, so this is the single point where the answer has to be no.
+      // The old test also required the handle to be absent from $default_cdns, which is built from every vendor file present on disk — so the condition was never true for a bundled library and the switch changed nothing: a disabled plugin still registered, still enqueued, and still ran for visitors.
+      // The editor preview is exempt: the switch decides what VISITORS download, not what the author can build with. Refusing it there took the preset bundles down with it — animation-builder-assets.php names SplitText as a hard dependency of the text presets, and WordPress silently drops a script whose dependency is unregistered — so switching a library off left those presets unplayable in the editor even with GSAP's own SplitText loaded from the CDN beside them.
+      if (
+        $is_optional
+        && !$this->is_editor_preview()
+        && self::gsap_toggle_state($gsap_plugin, $handle) === false
+      ) {
+        $this->unavailable_gsap_handles[$handle] = true;
+        continue;
       }
 
       $url = isset($entry['url']) && is_string($entry['url']) ? trim($entry['url']) : '';
@@ -1152,6 +1184,48 @@ final class Frontend
     }
 
     return array_values(array_unique($plugins));
+  }
+
+  /**
+   * What the stored toggles say about one optional GSAP library.
+   *
+   * Null means the toggles do not mention it, which is NOT the same as off: a
+   * site saved before that toggle existed carries no key for it, and several
+   * bundled libraries have no switch in the panel at all. Both must keep
+   * loading, so only a library the user can actually see switched off is ever
+   * refused.
+   *
+   * @param array  $gsap_plugin Stored gsapPlugin subtree.
+   * @param string $handle      Handle being registered.
+   * @return bool|null True on, false off, null not mentioned.
+   */
+  private static function gsap_toggle_state(array $gsap_plugin, string $handle): ?bool
+  {
+    $spellings = [$handle];
+
+    if (isset(self::GSAP_TOGGLE_ALIASES[$handle])) {
+      $spellings[] = self::GSAP_TOGGLE_ALIASES[$handle];
+    }
+
+    // The same map read backwards, so the camelCase alias resolves to its PascalCase twin as well.
+    $canonical = array_search($handle, self::GSAP_TOGGLE_ALIASES, true);
+    if ($canonical !== false) {
+      $spellings[] = $canonical;
+    }
+
+    $mentioned = false;
+    foreach ($spellings as $key) {
+      if (!array_key_exists($key, $gsap_plugin)) {
+        continue;
+      }
+      $mentioned = true;
+      // Any spelling saying yes is a yes, so a site holding both keys with one stale value keeps the library its animations expect.
+      if (filter_var($gsap_plugin[$key], FILTER_VALIDATE_BOOLEAN)) {
+        return true;
+      }
+    }
+
+    return $mentioned ? false : null;
   }
 
   /**

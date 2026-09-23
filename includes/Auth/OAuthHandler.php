@@ -148,6 +148,15 @@ final class OAuthHandler
     if (empty($encrypted)) {
       return false;
     }
+
+    // With the free plugin active its handler runs the connect (see init()) and writes this option in its own cipher format and key, which decrypt() below cannot read — the license check then stopped at no_token and showed "Unable to verify" forever. Read it back through the handler that wrote it.
+    if (class_exists('\MotionKit\Auth\OAuthHandler') && method_exists('\MotionKit\Auth\OAuthHandler', 'get_access_token')) {
+      $token = \MotionKit\Auth\OAuthHandler::get_access_token();
+      if (is_string($token) && $token !== '') {
+        return $token;
+      }
+    }
+
     return self::decrypt($encrypted);
   }
 

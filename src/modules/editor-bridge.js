@@ -227,6 +227,7 @@ function buildResponsePayload(overrides = {}) {
     animationFolders:
       overrides.animationFolders ?? data.animation_folders ?? [],
     deviceConfig: data.device_config ?? [],
+    plugins: data.plugins,
     base_domain: data.base_domain ?? window.location.origin,
     rest_url: data.rest_url ?? "",
   };

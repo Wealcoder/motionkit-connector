@@ -1059,6 +1059,7 @@ final class Frontend
 
     $runtime_data = [
       'platform'                  => 'wordpress',
+      'plugins'                   => $this->plugins_status(),
       'ajax_url'                  => admin_url('admin-ajax.php'),
       'nonce'                     => wp_create_nonce('motionkit_frontend_nonce'),
       'rest_url'                  => rest_url('motionkit/v1/'),
@@ -1090,6 +1091,26 @@ final class Frontend
     ];
 
     wp_localize_script($handle, 'motionkitData', $runtime_data);
+  }
+
+  /**
+   * Both MotionKit plugins' version and status, reported to the editor.
+   *
+   * @return array<string, array<string, string>>
+   */
+  private function plugins_status(): array
+  {
+    if (class_exists('\MotionKit\Common\PluginStatus')) {
+      return \MotionKit\Common\PluginStatus::snapshot();
+    }
+
+    return [
+      'motionkit'          => ['version' => '', 'status' => 'inactive'],
+      'motionkitConnector' => [
+        'version' => MOTIONKIT_CONNECTOR_VERSION,
+        'status'  => 'active',
+      ],
+    ];
   }
 
   /**

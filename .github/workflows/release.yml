@@ -66,6 +66,8 @@ jobs:
         if: steps.vars.outputs.should_release == 'true'
         run: |
           PLUGIN_SLUG="motionkit-connector"
+          # The archive is named for the plugin, the folder inside it for the WordPress install directory. Renaming that directory would orphan every site's activation, settings row and update check, so the two deliberately differ — mkConnector builds the same pair of names locally.
+          ZIP_NAME="motionkit-with-gsap"
           BUILD_DIR="/tmp/release-build/${PLUGIN_SLUG}"
           mkdir -p "${BUILD_DIR}"
           
@@ -78,8 +80,8 @@ jobs:
           
           # Create zip archive
           cd /tmp/release-build
-          zip -r "${GITHUB_WORKSPACE}/${PLUGIN_SLUG}.zip" "${PLUGIN_SLUG}"
-          echo "Created ${PLUGIN_SLUG}.zip successfully."
+          zip -r "${GITHUB_WORKSPACE}/${ZIP_NAME}.zip" "${PLUGIN_SLUG}"
+          echo "Created ${ZIP_NAME}.zip successfully."
 
       # Create GitHub Release with zip attached
       - name: Create GitHub Release
@@ -87,8 +89,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
-          name: MotionKit Connector ${{ steps.vars.outputs.tag }}
-          files: motionkit-connector.zip
+          name: Motionkit with GSAP ${{ steps.vars.outputs.tag }}
+          files: motionkit-with-gsap.zip
           generate_release_notes: true
           draft: false
           prerelease: false

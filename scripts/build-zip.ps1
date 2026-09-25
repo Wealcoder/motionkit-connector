@@ -5,7 +5,7 @@ $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "motionkit-zip-temp"
 if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 
-New-Item -ItemType Directory -Path "$tempDir\motionkit-with-gsap" | Out-Null
+New-Item -ItemType Directory -Path $tempDir | Out-Null
 
 $excludePatterns = @(
     '\\\.git',
@@ -35,7 +35,7 @@ Get-ChildItem -Path $sourceDir -Recurse | ForEach-Object {
         }
     }
     if (-not $skip) {
-        $destPath = Join-Path "$tempDir\motionkit-with-gsap" $relPath
+        $destPath = Join-Path $tempDir $relPath
         if ($_.PSIsContainer) {
             if (-not (Test-Path $destPath)) {
                 New-Item -ItemType Directory -Path $destPath -Force | Out-Null
@@ -50,6 +50,6 @@ Get-ChildItem -Path $sourceDir -Recurse | ForEach-Object {
     }
 }
 
-Compress-Archive -Path "$tempDir\motionkit-with-gsap" -DestinationPath $zipPath
+Compress-Archive -Path "$tempDir\*" -DestinationPath $zipPath
 Remove-Item $tempDir -Recurse -Force
-Write-Host "Zip created successfully at $zipPath"
+Write-Host "Flat zip created successfully at $zipPath"

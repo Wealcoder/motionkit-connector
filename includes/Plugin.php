@@ -36,7 +36,7 @@ final class Plugin
     /**
      * Plugin version
      */
-    public const VERSION = '1.0.1';
+    public const VERSION = '1.2.0';
 
     /**
      * Plugin name

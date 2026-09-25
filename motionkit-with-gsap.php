@@ -1,9 +1,9 @@
 <?php
 
 /**
- * Plugin Name: MotionKit Connector
+ * Plugin Name: MotionKit With Gsap
  * Plugin URI: https://motionkit.io
- * Description: MotionKit Connector — Animation Engine, REST API, GSAP Enqueue, ScrollSmoother, Page Transition, and Preloader Engine for MotionKit.
+ * Description: MotionKit with gsap — Animation Engine, GSAP Enqueue, ScrollSmoother, Page Transition, and Preloader Engine for MotionKit.
  * Version: 1.0.1
  * Author: Wealcoder
  * Author URI: https://motionkit.io

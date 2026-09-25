@@ -41,12 +41,12 @@ final class Plugin
     /**
      * Plugin name
      */
-    public const PLUGIN_NAME = 'MotionKit Connector';
+    public const PLUGIN_NAME = 'MotionKit With Gsap';
 
     /**
      * Plugin slug
      */
-    public const PLUGIN_SLUG = 'motionkit-connector';
+    public const PLUGIN_SLUG = 'motionkit-with-gsap';
 
     /**
      * Plugin instance

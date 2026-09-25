@@ -26,7 +26,7 @@ $excludePatterns = @(
     'webpack.*\.js$'
 )
 
-Get-ChildItem -Path $sourceDir -Recurse | ForEach-Object {
+Get-ChildItem -Path $sourceDir -Recurse | Where-Object { $_.FullName -notmatch '(\\|/)(node_modules|\.git|\.github|src|scripts)(\\|/)' } | ForEach-Object {
     if (-not $_.PSIsContainer) {
         $relPath = $_.FullName.Substring($sourceDir.Length + 1)
         $skip = $false

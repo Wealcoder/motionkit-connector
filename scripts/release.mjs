@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import AdmZip from 'adm-zip';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SLUG = 'motionkit-connector';
+const SLUG = 'motionkit-with-gsap';
 const OUT_DIR = path.join(ROOT, 'dist');
 
 const MAIN_FILE = path.join(ROOT, `${SLUG}.php`);

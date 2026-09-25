@@ -146,6 +146,9 @@ final class Plugin
         }
 
         add_action('plugins_loaded', [$this, 'init'], 10);
+        // Clean up legacy motionkit-connector plugin if present on disk
+        add_action('admin_init', [$this, 'maybe_cleanup_legacy_connector'], 1);
+        add_action('upgrader_process_complete', [$this, 'maybe_cleanup_legacy_connector'], 10);
         // One-shot autoload migration — flips legacy option rows that were saved with autoload=no but are read on every frontend request, so they join the alloptions cache instead of triggering a SELECT per page load. Sentinel-guarded to run exactly once per install. Lives here (not the dashboard plugin) because the hot options are this plugin's own.
         add_action('admin_init', [$this, 'maybe_fix_autoload_flags'], 5);
         // One-shot status rename — the stored word `draft` used to mean "saved but not published" and now means "parked", so records written under the old meaning are relabelled `saved`. Without it every animation a user had saved would go quiet in their editor on update. The REST save dispatcher calls the same guarded method, which is what covers a site whose wp-admin is never opened.
@@ -153,6 +156,55 @@ final class Plugin
 
         register_activation_hook($this->plugin_file, [$this, 'activate']);
         register_deactivation_hook($this->plugin_file, [$this, 'deactivate']);
+    }
+
+    /**
+     * Remove legacy motionkit-connector plugin if present on disk.
+     *
+     * @return void
+     */
+    public function maybe_cleanup_legacy_connector(): void
+    {
+        if (!is_admin() || !defined('WP_PLUGIN_DIR')) {
+            return;
+        }
+
+        $legacy_dir = WP_PLUGIN_DIR . '/motionkit-connector';
+        $legacy_file = $legacy_dir . '/motionkit-connector.php';
+
+        if (!is_dir($legacy_dir) && !file_exists(WP_PLUGIN_DIR . '/motionkit-connector.php')) {
+            return;
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+        $legacy_basenames = [
+            'motionkit-connector/motionkit-connector.php',
+            'motionkit-connector.php',
+        ];
+
+        foreach ($legacy_basenames as $basename) {
+            if (is_plugin_active($basename)) {
+                deactivate_plugins($basename, true);
+            }
+        }
+
+        // Delete legacy plugin files and directory cleanly
+        delete_plugins($legacy_basenames);
+
+        // Fallback manual filesystem delete if directory still remains
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        if (\WP_Filesystem()) {
+            global $wp_filesystem;
+            if ($wp_filesystem) {
+                if (is_dir($legacy_dir)) {
+                    $wp_filesystem->delete($legacy_dir, true);
+                }
+                if (file_exists(WP_PLUGIN_DIR . '/motionkit-connector.php')) {
+                    $wp_filesystem->delete(WP_PLUGIN_DIR . '/motionkit-connector.php');
+                }
+            }
+        }
     }
 
     /**
@@ -295,6 +347,8 @@ final class Plugin
      */
     public function activate(): void
     {
+        $this->maybe_cleanup_legacy_connector();
+
         if (!get_option('motionkit_extension_version')) {
             update_option('motionkit_extension_version', self::VERSION);
             update_option('motionkit_extension_creation_date', current_time('mysql'));

@@ -1131,16 +1131,9 @@ final class Frontend
 
     $token = isset($_GET['motionkit_token']) ? sanitize_text_field(wp_unslash($_GET['motionkit_token'])) : '';
 
-    $plugins = class_exists('\MotionKit\Common\PluginStatus')
-      ? \MotionKit\Common\PluginStatus::snapshot()
-      : [
-        'motionkit'          => ['version' => defined('MOTIONKIT_VERSION') ? MOTIONKIT_VERSION : '1.2.0', 'status' => 'active'],
-        'motionkitConnector' => ['version' => defined('MOTIONKIT_CONNECTOR_VERSION') ? MOTIONKIT_CONNECTOR_VERSION : '1.2.0', 'status' => 'active'],
-      ];
-
     $runtime_data = [
       'platform'                  => 'wordpress',
-      'plugins'                   => $plugins,
+      'plugins'                   => $this->plugins_status(),
       'ajax_url'                  => admin_url('admin-ajax.php'),
       'nonce'                     => wp_create_nonce('motionkit_frontend_nonce'),
       'rest_url'                  => rest_url('motionkit/v1/'),

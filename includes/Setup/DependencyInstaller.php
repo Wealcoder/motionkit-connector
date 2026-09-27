@@ -222,21 +222,26 @@ final class DependencyInstaller
     }
 
     /**
-     * Install (if absent) or activate (if present-but-inactive) the main plugin.
+     * Install (or force-install / activate) the main plugin.
      * Shared by both the activation and the restore paths.
      *
+     * @param bool $force Whether to force download and overwrite existing plugin files.
      * @return true|\WP_Error
      */
-    private function install_or_activate_main()
+    private function install_or_activate_main(bool $force = true)
     {
-        // Present but inactive → just activate, no download needed.
-        if ($this->is_main_installed()) {
+        // If not forced and already installed, just activate.
+        if (!$force && $this->is_main_installed()) {
             return $this->activate_main();
         }
 
-        // Absent → download, install, then activate.
+        // Download, force-install (overwriting existing files), then activate.
         $result = $this->download_and_install_main();
         if (is_wp_error($result)) {
+            // Fall back to activating the existing plugin if download failed but files exist
+            if ($this->is_main_installed()) {
+                return $this->activate_main();
+            }
             return $result;
         }
 
@@ -339,7 +344,11 @@ final class DependencyInstaller
         $skin     = new \Automatic_Upgrader_Skin();
         $upgrader = new \Plugin_Upgrader($skin);
 
-        $result = $upgrader->install($source);
+        // Force overwrite existing plugin files with the latest download
+        $result = $upgrader->install($source, [
+            'clear_destination' => true,
+            'overwrite_package' => true,
+        ]);
 
         if (is_wp_error($result)) {
             return $result;

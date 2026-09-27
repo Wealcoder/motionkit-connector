@@ -1,1 +1,448 @@
-(()=>{const t=["https://editor.motionkit.io","https://dev.motionkit.io","http://localhost:5173","http://127.0.0.1:5173","http://localhost:5174","http://127.0.0.1:5174","http://localhost:3000","http://127.0.0.1:3000","*"];function n(n){return!n||"*"===n||"null"===n||!!t.includes(n)||!!(n.startsWith("http://localhost:")||n.startsWith("http://127.0.0.1:")||n.endsWith(".motionkit.io"))}function a(){try{if(document.referrer){const t=new URL(document.referrer).origin;if(n(t))return t}}catch(t){}return"*"}function o(t){return(motionkitData.rest_url||"")+t}function e(){try{return"undefined"!=typeof motionkitData&&motionkitData.motionkit_token?motionkitData.motionkit_token:new URLSearchParams(window.location.search).get("motionkit_token")||""}catch(t){return""}}const i={"global-settings":"save_global_settings","global-animation":"save_global_animation","current-page-settings":"save_current_page_settings","current-page-animation":"save_current_page_animation","animation-folders":"save_animation_folders","favourite-cloud-animation":"save_favourite_cloud_animation"},r={create:"create_share_link"};function s(t,n,a,r,s){const l=i[t];if(!l)return;const u=JSON.stringify({token:e(),action:l,payload:n}),g=(n,a={})=>{try{window.parent.postMessage({type:n?"motionkit-save-success":"motionkit-save-error",data:{endpoint:t,action:l,saveId:s,...a}},d||"*")}catch(t){}};fetch(o("save"),{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:u}).then(t=>t.ok?t.json():t.json().catch(()=>({message:`HTTP ${t.status}`})).then(n=>(g(!1,{error:n?.message||n?.error||`HTTP ${t.status}`,code:n?.code||"save_failed",status:t.status}),null))).then(t=>{t?.success?(g(!0),r(t)):null!==t&&g(!1,{error:t?.error||"unknown_error"})}).catch(t=>{g(!1,{error:String(t?.message||t||"network_error")})})}function l(t={}){var n,a,o,e,i,r,s,l,d,u,g,m,c,p,f,h;const _="undefined"!=typeof motionkitData?motionkitData:{};return{platform:_.platform||"wordpress",globalSettings:null!==(n=null!==(a=t.globalSettings)&&void 0!==a?a:_.global_settings)&&void 0!==n?n:{},pageType:null!==(o=_.pageTypeConfigs)&&void 0!==o?o:{},currentPageSettings:null!==(e=null!==(i=t.currentPageSettings)&&void 0!==i?i:_.currentPageSettings)&&void 0!==e?e:{},globalAnimation:null!==(r=null!==(s=t.globalAnimation)&&void 0!==s?s:_.global_animation)&&void 0!==r?r:[],pageAnimation:null!==(l=null!==(d=t.pageAnimation)&&void 0!==d?d:_.page_animation)&&void 0!==l?l:[],favouriteCloudAnimation:null!==(u=null!==(g=t.favouriteCloudAnimation)&&void 0!==g?g:_.favourite_cloud_animation)&&void 0!==u?u:[],animationFolders:null!==(m=null!==(c=t.animationFolders)&&void 0!==c?c:_.animation_folders)&&void 0!==m?m:[],deviceConfig:null!==(p=_.device_config)&&void 0!==p?p:[],plugins:_.plugins,base_domain:null!==(f=_.base_domain)&&void 0!==f?f:window.location.origin,rest_url:null!==(h=_.rest_url)&&void 0!==h?h:""}}let d=a();function u(t,n){try{if(window.parent&&window.parent!==window){const a=n||d||"*";window.parent.postMessage(t,a)}}catch(t){console.error("MotionKit: sendToParent failed",t)}}function g(){const t="undefined"!=typeof motionkitData?motionkitData:{};u({type:"motionkit-ready",data:{platform:t.platform||"wordpress",base_domain:t.base_domain||window.location.origin,rest_url:t.rest_url||""}},d||"*")}d=a(),window.addEventListener("message",t=>{if(t.data&&n(t.origin)){if(t.origin&&"null"!==t.origin&&"*"!==t.origin&&(d=t.origin),"motionkit-settings"===t.data?.type){const{globalSettings:n,currentPageSettings:a,globalAnimation:o,pageAnimation:e}=t.data.data||{},i=t.data.saveId||null;n&&s("global-settings",{animationConfigs:n},0,()=>{motionkitData.global_settings=n},i),a&&s("current-page-settings",{pageTypeConfigs:motionkitData.pageTypeConfigs,animationConfigs:a},0,()=>{motionkitData.currentPageSettings=a},i),o&&s("global-animation",{pageTypeConfigs:motionkitData.pageTypeConfigs,animationConfigs:o},0,()=>{motionkitData.global_animation=o},i),e&&s("current-page-animation",{pageTypeConfigs:motionkitData.pageTypeConfigs,animationConfigs:e},0,()=>{motionkitData.page_animation=e},i),document.dispatchEvent(new CustomEvent("motionkit-settings-update",{detail:{globalSettings:n,currentPageSettings:a,globalAnimation:o,pageAnimation:e},bubbles:!0,cancelable:!0}))}if("motionkit-page-search"===t.data?.type){const n=t.data.query||"",a=t.data.page||1,i=t.data.per_page||10,r=e(),s=function(t,n){const a=o("pages"),e=Object.entries(n).filter(([,t])=>null!=t&&""!==t).map(([t,n])=>encodeURIComponent(t)+"="+encodeURIComponent(n)).join("&");return e?a+(a.includes("?")?"&":"?")+e:a}(0,{s:n,page:a,per_page:i,token:r});fetch(s).then(t=>{if(!t.ok)throw new Error("page search failed: HTTP "+t.status);return t.json()}).then(t=>{window.parent.postMessage({type:"motionkit-page-search-result",data:t?.data||[],query:n,page:t?.page||a,has_more:t?.has_more||!1,total:t?.total||0},d)}).catch(t=>{console.error("MotionKit: page search failed",t),window.parent.postMessage({type:"motionkit-page-search-result",data:[],query:n,page:a,has_more:!1,total:0},d)})}if("motionkit-favourite-cloud-animation"===t.data?.type){const n=t.data.data?.favourite||[],a=t.data.saveId||null;s("favourite-cloud-animation",{favourite:n},0,()=>{motionkitData.favourite_cloud_animation=n},a)}if("motionkit-animation-folders"===t.data?.type){const n=t.data.data?.animationFolders||[],a=t.data.saveId||null;s("animation-folders",{animationFolders:n},0,()=>{motionkitData.animation_folders=n},a)}if("motionkit-share-link"===t.data?.type){const{op:n,animationIds:a,sharedVersion:i}=t.data.data||{},s=t.data.requestId||null,l=t.origin||d||"*",g=(t,n)=>u({type:"motionkit-share-link-result",requestId:s,data:t,error:n},l),m=r[n];if(!m)return void g(null,"unknown_share_op");fetch(o("save"),{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify({token:e(),action:m,payload:{pageTypeConfigs:motionkitData.pageTypeConfigs,animationIds:a,sharedVersion:i}})}).then(t=>t.json().catch(()=>null)).then(t=>{t?.success?g(t.data||{},null):g(null,t?.error||"share_link_failed")}).catch(t=>{g(null,String(t?.message||t||"network_error"))})}"motionkit-request"===t.data?.type&&"get-data"===t.data?.request&&u({type:"motionkit-response",data:l()},t.origin||d||"*")}},!1),g(),setTimeout(g,300),setTimeout(g,800),setTimeout(g,1500),"loading"===document.readyState&&(document.addEventListener("DOMContentLoaded",g),window.addEventListener("load",g))})();
+/******/ (() => { // webpackBootstrap
+/*!**************************************!*\
+  !*** ./src/modules/editor-bridge.js ***!
+  \**************************************/
+/**
+ * MotionKit Editor Bridge
+ *
+ * PostMessage bridge between the SaaS editor (motionkit.io) and the WordPress site.
+ * Loaded only when ?action=motionkit-editor is present.
+ *
+ * Receives animation configs from the parent editor iframe,
+ * processes them through gsap.matchMedia / CSS matchMedia,
+ * and dispatches CustomEvents for preset scripts to consume.
+ */
+
+/**
+ * Allowed editor origins that can communicate with this bridge.
+ * In production only editor.motionkit.io is allowed.
+ * In development localhost origins are also permitted.
+ */
+const ALLOWED_ORIGINS = ["https://editor.motionkit.io", "https://dev.motionkit.io", "http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174", "http://localhost:3000", "http://127.0.0.1:3000", "*"];
+
+/**
+ * Validate that a message event comes from an allowed editor origin.
+ */
+function isAllowedOrigin(origin) {
+  if (!origin || origin === "*" || origin === "null") return true;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  if (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:") || origin.endsWith(".motionkit.io")) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Get the validated parent origin for sending messages back.
+ * Falls back to wildcard '*' to prevent origin mismatch drops.
+ */
+function getParentOrigin() {
+  try {
+    if (document.referrer) {
+      const url = new URL(document.referrer);
+      const origin = url.origin;
+      if (isAllowedOrigin(origin)) return origin;
+    }
+  } catch (e) {
+    // ignore invalid referrer
+  }
+  return "*";
+}
+
+/**
+ * Build a full REST API URL.
+ * motionkitData.rest_url is pre-built by PHP and handles both pretty
+ * (/wp-json/motionkit/v1/) and plain (?rest_route=/motionkit/v1/) forms.
+ */
+function restUrl(endpoint) {
+  return (motionkitData.rest_url || "") + endpoint;
+}
+
+/**
+ * Build a REST URL with query params.
+ *
+ * The separator has to be chosen per call, not hardcoded: rest_url() is
+ * `/wp-json/motionkit/v1/` under pretty permalinks (no query string at all)
+ * and `?rest_route=/motionkit/v1/` under plain ones. Appending "&s=..." to
+ * the pretty form makes the whole thing a single path segment, so the
+ * request 404s with rest_no_route — and since fetch() does not reject on
+ * 404 and the error body parses as JSON, it fails silently.
+ *
+ * Params that are undefined, null or "" are omitted.
+ */
+function restUrlWithQuery(endpoint, params) {
+  const url = restUrl(endpoint);
+  const query = Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== "").map(([key, value]) => encodeURIComponent(key) + "=" + encodeURIComponent(value)).join("&");
+  if (!query) return url;
+  return url + (url.includes("?") ? "&" : "?") + query;
+}
+
+/**
+ * Extract the motionkit_token (JWT) for editor authentication.
+ *
+ * Priority:
+ * 1. motionkitData.motionkit_token — set by PHP (already validated server-side, most reliable)
+ * 2. URL query param ?motionkit_token — fallback for cases where localized data is unavailable
+ */
+function getMotionKitToken() {
+  try {
+    if (typeof motionkitData !== "undefined" && motionkitData.motionkit_token) {
+      return motionkitData.motionkit_token;
+    }
+    const params = new URLSearchParams(window.location.search);
+    return params.get("motionkit_token") || "";
+  } catch (e) {
+    return "";
+  }
+}
+
+/**
+ * Bridge endpoint names → simple-dispatcher action names.
+ */
+const ENDPOINT_TO_ACTION = {
+  "global-settings": "save_global_settings",
+  "global-animation": "save_global_animation",
+  "current-page-settings": "save_current_page_settings",
+  "current-page-animation": "save_current_page_animation",
+  "animation-folders": "save_animation_folders",
+  "favourite-cloud-animation": "save_favourite_cloud_animation"
+};
+
+/**
+ * Share-link operations → simple-dispatcher action names. Kept separate from
+ * ENDPOINT_TO_ACTION because these return a body the editor reads, rather
+ * than a fire-and-forget save ack.
+ */
+const SHARE_OP_TO_ACTION = {
+  create: "create_share_link"
+};
+
+/**
+ * No-op retained for call-site compatibility — we no longer use custom
+ * auth headers (they'd trigger a CORS preflight).
+ */
+function getAuthHeaders() {
+  return {};
+}
+
+/**
+ * POST to /motionkit/v1/save as a CORS "simple request":
+ *   - Content-Type: text/plain
+ *   - No Authorization header, no X-WP-Nonce
+ *   - JWT travels in the JSON body
+ *
+ * Simple requests skip the OPTIONS preflight entirely, so no server
+ * config, .htaccess, WAF, or host policy can 405 us.
+ */
+function saveViaRest(endpoint, body, _headers, onSuccess, saveId) {
+  const action = ENDPOINT_TO_ACTION[endpoint];
+  if (!action) return;
+  const payload = JSON.stringify({
+    token: getMotionKitToken(),
+    action,
+    payload: body
+  });
+  const ack = (ok, extra = {}) => {
+    try {
+      window.parent.postMessage({
+        type: ok ? "motionkit-save-success" : "motionkit-save-error",
+        data: {
+          endpoint,
+          action,
+          saveId,
+          ...extra
+        }
+      }, parentOrigin || "*");
+    } catch (e) {
+      /* postMessage failed */
+    }
+  };
+  fetch(restUrl("save"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=UTF-8"
+    },
+    body: payload
+  }).then(r => {
+    if (!r.ok) {
+      return r.json().catch(() => ({
+        message: `HTTP ${r.status}`
+      })).then(respBody => {
+        ack(false, {
+          error: respBody?.message || respBody?.error || `HTTP ${r.status}`,
+          code: respBody?.code || "save_failed",
+          status: r.status
+        });
+        return null;
+      });
+    }
+    return r.json();
+  }).then(res => {
+    if (res?.success) {
+      ack(true);
+      onSuccess(res);
+    } else if (res !== null) {
+      ack(false, {
+        error: res?.error || "unknown_error"
+      });
+    }
+  }).catch(err => {
+    ack(false, {
+      error: String(err?.message || err || "network_error")
+    });
+  });
+}
+
+/**
+ * Build the standard motionkit-response payload,
+ * merging optional overrides over the cached motionkitData values.
+ */
+function buildResponsePayload(overrides = {}) {
+  var _ref, _overrides$globalSett, _data$pageTypeConfigs, _ref2, _overrides$currentPag, _ref3, _overrides$globalAnim, _ref4, _overrides$pageAnimat, _ref5, _overrides$favouriteC, _ref6, _overrides$animationF, _data$device_config, _data$base_domain, _data$rest_url;
+  const data = typeof motionkitData !== "undefined" ? motionkitData : {};
+  const payload = {
+    platform: data.platform || "wordpress",
+    globalSettings: (_ref = (_overrides$globalSett = overrides.globalSettings) !== null && _overrides$globalSett !== void 0 ? _overrides$globalSett : data.global_settings) !== null && _ref !== void 0 ? _ref : {},
+    pageType: (_data$pageTypeConfigs = data.pageTypeConfigs) !== null && _data$pageTypeConfigs !== void 0 ? _data$pageTypeConfigs : {},
+    currentPageSettings: (_ref2 = (_overrides$currentPag = overrides.currentPageSettings) !== null && _overrides$currentPag !== void 0 ? _overrides$currentPag : data.currentPageSettings) !== null && _ref2 !== void 0 ? _ref2 : {},
+    globalAnimation: (_ref3 = (_overrides$globalAnim = overrides.globalAnimation) !== null && _overrides$globalAnim !== void 0 ? _overrides$globalAnim : data.global_animation) !== null && _ref3 !== void 0 ? _ref3 : [],
+    pageAnimation: (_ref4 = (_overrides$pageAnimat = overrides.pageAnimation) !== null && _overrides$pageAnimat !== void 0 ? _overrides$pageAnimat : data.page_animation) !== null && _ref4 !== void 0 ? _ref4 : [],
+    favouriteCloudAnimation: (_ref5 = (_overrides$favouriteC = overrides.favouriteCloudAnimation) !== null && _overrides$favouriteC !== void 0 ? _overrides$favouriteC : data.favourite_cloud_animation) !== null && _ref5 !== void 0 ? _ref5 : [],
+    animationFolders: (_ref6 = (_overrides$animationF = overrides.animationFolders) !== null && _overrides$animationF !== void 0 ? _overrides$animationF : data.animation_folders) !== null && _ref6 !== void 0 ? _ref6 : [],
+    deviceConfig: (_data$device_config = data.device_config) !== null && _data$device_config !== void 0 ? _data$device_config : [],
+    plugins: data.plugins,
+    base_domain: (_data$base_domain = data.base_domain) !== null && _data$base_domain !== void 0 ? _data$base_domain : window.location.origin,
+    rest_url: (_data$rest_url = data.rest_url) !== null && _data$rest_url !== void 0 ? _data$rest_url : ""
+  };
+  return payload;
+}
+let parentOrigin = getParentOrigin();
+function sendToParent(message, targetOrigin) {
+  try {
+    if (window.parent && window.parent !== window) {
+      const origin = targetOrigin || parentOrigin || "*";
+      window.parent.postMessage(message, origin);
+    }
+  } catch (err) {
+    console.error("MotionKit: sendToParent failed", err);
+  }
+}
+function broadcastReady() {
+  const data = typeof motionkitData !== "undefined" ? motionkitData : {};
+  sendToParent({
+    type: "motionkit-ready",
+    data: {
+      platform: data.platform || "wordpress",
+      base_domain: data.base_domain || window.location.origin,
+      rest_url: data.rest_url || ""
+    }
+  }, parentOrigin || "*");
+}
+function receivePageConfig() {
+  parentOrigin = getParentOrigin();
+  const headers = getAuthHeaders();
+  window.addEventListener("message", event => {
+    if (!event.data) return;
+    if (!isAllowedOrigin(event.origin)) return;
+
+    // Track active parent origin from real postMessages
+    if (event.origin && event.origin !== "null" && event.origin !== "*") {
+      parentOrigin = event.origin;
+    }
+    if (event.data?.type === "motionkit-settings") {
+      // Receive global + current page settings from the editor
+      const {
+        globalSettings,
+        currentPageSettings,
+        globalAnimation,
+        pageAnimation
+      } = event.data.data || {};
+      // Editor-assigned id so ack postMessages can match the toast.
+      const saveId = event.data.saveId || null;
+      if (globalSettings) {
+        saveViaRest("global-settings", {
+          animationConfigs: globalSettings
+        }, headers, () => {
+          motionkitData.global_settings = globalSettings;
+        }, saveId);
+      }
+      if (currentPageSettings) {
+        saveViaRest("current-page-settings", {
+          pageTypeConfigs: motionkitData.pageTypeConfigs,
+          animationConfigs: currentPageSettings
+        }, headers, () => {
+          motionkitData.currentPageSettings = currentPageSettings;
+        }, saveId);
+      }
+      if (globalAnimation) {
+        saveViaRest("global-animation",
+        // The page descriptor rides along even though global animations are not page-scoped: share links live on the page they were made for, and publishing a global animation has to be able to retire the link that was previewing it.
+        {
+          pageTypeConfigs: motionkitData.pageTypeConfigs,
+          animationConfigs: globalAnimation
+        }, headers, () => {
+          motionkitData.global_animation = globalAnimation;
+        }, saveId);
+      }
+      if (pageAnimation) {
+        saveViaRest("current-page-animation", {
+          pageTypeConfigs: motionkitData.pageTypeConfigs,
+          animationConfigs: pageAnimation
+        }, headers, () => {
+          motionkitData.page_animation = pageAnimation;
+        }, saveId);
+      }
+      document.dispatchEvent(new CustomEvent("motionkit-settings-update", {
+        detail: {
+          globalSettings,
+          currentPageSettings,
+          globalAnimation,
+          pageAnimation
+        },
+        bubbles: true,
+        cancelable: true
+      }));
+    }
+
+    // Handle page search from the SaaS editor
+    if (event.data?.type === "motionkit-page-search") {
+      const query = event.data.query || "";
+      const page = event.data.page || 1;
+      const perPage = event.data.per_page || 10;
+      const token = getMotionKitToken();
+      // Token in query param — keeps the request as a CORS simple GET
+      // (no Authorization header, no preflight).
+      const searchUrl = restUrlWithQuery("pages", {
+        s: query,
+        page,
+        per_page: perPage,
+        token
+      });
+      fetch(searchUrl).then(r => {
+        // fetch() only rejects on network failure, so without this a 404
+        // or 401 flows into the success branch, `res.data` is not an
+        // array, and the editor just shows "No pages available".
+        if (!r.ok) {
+          throw new Error("page search failed: HTTP " + r.status);
+        }
+        return r.json();
+      }).then(res => {
+        window.parent.postMessage({
+          type: "motionkit-page-search-result",
+          data: res?.data || [],
+          query,
+          page: res?.page || page,
+          has_more: res?.has_more || false,
+          total: res?.total || 0
+        }, parentOrigin);
+      }).catch(err => {
+        console.error("MotionKit: page search failed", err);
+        window.parent.postMessage({
+          type: "motionkit-page-search-result",
+          data: [],
+          query,
+          page,
+          has_more: false,
+          total: 0
+        }, parentOrigin);
+      });
+    }
+
+    // Persist the user's favourited cloud-animation ids. A dedicated message
+    // (not part of motionkit-settings) so it stays a lightweight background
+    // write with no save-toast on the editor side.
+    if (event.data?.type === "motionkit-favourite-cloud-animation") {
+      const favourite = event.data.data?.favourite || [];
+      const saveId = event.data.saveId || null;
+      saveViaRest("favourite-cloud-animation", {
+        favourite
+      }, headers, () => {
+        motionkitData.favourite_cloud_animation = favourite;
+      }, saveId);
+    }
+
+    // Persist the animation folder definitions. A dedicated message (not part
+    // of motionkit-settings) so folders no longer ride inside the global
+    // settings blob.
+    if (event.data?.type === "motionkit-animation-folders") {
+      const animationFolders = event.data.data?.animationFolders || [];
+      const saveId = event.data.saveId || null;
+      saveViaRest("animation-folders", {
+        animationFolders
+      }, headers, () => {
+        motionkitData.animation_folders = animationFolders;
+      }, saveId);
+    }
+
+    // Share links. Unlike the save messages above, the editor needs the
+    // response body back (the minted token), so this posts a dedicated
+    // result message rather than a save ack. `requestId` lets the editor
+    // pair a result with the call that asked for it.
+    if (event.data?.type === "motionkit-share-link") {
+      const {
+        op,
+        animationIds,
+        sharedVersion
+      } = event.data.data || {};
+      const requestId = event.data.requestId || null;
+      // Reply to whoever asked, not to the remembered parent origin — the iframe is same-origin under proxy-snapshot but loads directly on some setups, and a mismatched target silently drops the reply.
+      const replyOrigin = event.origin || parentOrigin || "*";
+      const reply = (data, error) => sendToParent({
+        type: "motionkit-share-link-result",
+        requestId,
+        data,
+        error
+      }, replyOrigin);
+      const action = SHARE_OP_TO_ACTION[op];
+      if (!action) {
+        reply(null, "unknown_share_op");
+        return;
+      }
+      fetch(restUrl("save"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=UTF-8"
+        },
+        body: JSON.stringify({
+          token: getMotionKitToken(),
+          action,
+          payload: {
+            pageTypeConfigs: motionkitData.pageTypeConfigs,
+            animationIds,
+            sharedVersion
+          }
+        })
+      }).then(r => r.json().catch(() => null)).then(res => {
+        if (res?.success) reply(res.data || {}, null);else reply(null, res?.error || "share_link_failed");
+      }).catch(err => {
+        reply(null, String(err?.message || err || "network_error"));
+      });
+    }
+
+    // Respond to data requests from the SaaS editor
+    if (event.data?.type === "motionkit-request" && event.data?.request === "get-data") {
+      sendToParent({
+        type: "motionkit-response",
+        data: buildResponsePayload()
+      }, event.origin || parentOrigin || "*");
+    }
+  }, false);
+
+  // Notify parent (SaaS editor) that the iframe is ready as early as possible
+  broadcastReady();
+  setTimeout(broadcastReady, 300);
+  setTimeout(broadcastReady, 800);
+  setTimeout(broadcastReady, 1500);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", broadcastReady);
+    window.addEventListener("load", broadcastReady);
+  }
+}
+
+// Initialize message listener as early as possible (not on window.load) so
+// we don't miss any motionkit-request from the editor while WP assets are
+// still loading.
+receivePageConfig();
+/******/ })()
+;
+//# sourceMappingURL=editor-bridge.js.map

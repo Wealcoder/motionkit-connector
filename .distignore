@@ -10,13 +10,16 @@
 .vscode
 .claude
 
+src
+src/
 node_modules
-# Anchored to the plugin root on purpose. A bare `vendor` is matched by basename at every depth, so it also swallowed assets/vendor/gsap/ — the 23 committed GSAP files the engine's one hard dependency comes from. The archive then shipped with wp_register_script('gsap', 'assets/vendor/gsap/gsap.min.js') pointing at nothing, and every animation, preloader and page transition silently declined to run.
 /vendor
 scripts
 tests
 
+package.json
 package-lock.json
+webpack.config.js
 jsconfig.json
 composer.json
 composer.lock
@@ -29,6 +32,7 @@ phpstan.neon.dist
 phpstan-baseline.neon
 phpstan-bootstrap.php
 
+*.md
 CLAUDE.md
 README.md
 USAGE.md

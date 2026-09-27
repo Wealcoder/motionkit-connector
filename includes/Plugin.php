@@ -176,6 +176,17 @@ final class Plugin
         $legacy_dir = WP_PLUGIN_DIR . '/motionkit-connector';
         $legacy_file = $legacy_dir . '/motionkit-connector.php';
 
+        // Never touch the directory this plugin is itself running from: installed under the legacy name, every branch below deletes it mid-request and WordPress then deactivates it with "Plugin file does not exist".
+        $own_dir = defined('MOTIONKIT_CONNECTOR_PLUGIN_DIR') ? untrailingslashit(MOTIONKIT_CONNECTOR_PLUGIN_DIR) : '';
+        if ($own_dir !== '' && ($legacy_dir === $own_dir || realpath($legacy_dir) === realpath($own_dir))) {
+            return;
+        }
+
+        // A symlink here is a developer's checkout linked into wp-content/plugins, and $wp_filesystem->delete() follows it — emptying the real repository instead of removing a stale copy.
+        if (is_link($legacy_dir)) {
+            return;
+        }
+
         if (!is_dir($legacy_dir) && !file_exists(WP_PLUGIN_DIR . '/motionkit-connector.php')) {
             return;
         }

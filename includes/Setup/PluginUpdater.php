@@ -325,8 +325,9 @@ final class PluginUpdater
      */
     private function fetch_remote(): ?array
     {
+        $store_url = defined('MOTIONKIT_STORE_URL') ? MOTIONKIT_STORE_URL : apply_filters('motionkit_store_url', self::STORE_URL);
         $response = wp_remote_post(
-            self::STORE_URL,
+            $store_url,
             [
                 'timeout' => 15,
                 'body'    => [

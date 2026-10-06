@@ -113,16 +113,17 @@ class MotionkitBuilderPageType
     $option_key = $resolved['option'];
     $id = $resolved['id'];
 
+    // update_post_meta() and update_term_meta() unslash their value and update_option() does not, while $animconf arrives unslashed — without wp_slash() every backslash saved on a page, post or term (a regex or an escaped quote in callback code) was silently stripped.
     switch ($store_type) {
       case 'post_meta':
         if ($id > 0) {
-          return (bool) update_post_meta($id, $option_key, $animconf);
+          return (bool) update_post_meta($id, $option_key, wp_slash($animconf));
         }
         return (bool) update_option($option_key, $animconf);
 
       case 'term_meta':
         if ($id > 0) {
-          return (bool) update_term_meta($id, $option_key, $animconf);
+          return (bool) update_term_meta($id, $option_key, wp_slash($animconf));
         }
         return (bool) update_option($option_key, $animconf);
 

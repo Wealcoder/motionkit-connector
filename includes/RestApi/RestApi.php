@@ -72,6 +72,8 @@ final class RestApi
     $this->share_links = new ShareLinks($this->page_type);
     add_action('rest_api_init', [$this, 'register_routes']);
     add_filter('rest_pre_serve_request', [$this, 'add_cors_headers'], 10, 4);
+    // Last on purpose: it has to see what a REST lockdown plugin decided before it can undo it for our own routes.
+    add_filter('rest_authentication_errors', [$this, 'unlock_own_routes'], PHP_INT_MAX);
   }
 
   /**
@@ -635,6 +637,64 @@ final class RestApi
 
   private function editor_url(string $url): string
   {
-    return add_query_arg('action', 'motionkit-editor', $url);
+    return add_query_arg('motionkit', 'editor', $url);
+  }
+
+  /**
+   * Let this plugin's own REST calls through a REST lockdown.
+   *
+   * Plugins that restrict the REST API to logged-in users (Solid Security's "Restrict REST API", Disable REST API and their kin) answer every anonymous request with a 401 from rest_authentication_errors — our save included, which the bridge sends from the editor iframe with a JWT and no cookie. This runs last, and only answers for our own namespace when the request carries a token: the handlers still verify that token, so a request that gets this far is no better off than on a site with no lockdown at all.
+   *
+   * @param \WP_Error|null|true $result What the filters before this one decided.
+   * @return \WP_Error|null|true
+   */
+  public function unlock_own_routes($result)
+  {
+    if (!is_wp_error($result)) {
+      return $result;
+    }
+
+    if (!self::is_own_rest_request() || !self::request_carries_token()) {
+      return $result;
+    }
+
+    return true;
+  }
+
+  // The route being served, from the ?rest_route= form or the pretty URL, matched against this plugin's namespace.
+  private static function is_own_rest_request(): bool
+  {
+    $prefix = '/' . self::NAMESPACE . '/';
+
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    $route = isset($_GET['rest_route']) ? (string) wp_unslash($_GET['rest_route']) : '';
+    if ($route !== '') {
+      return strpos($route, $prefix) === 0;
+    }
+
+    $path = (string) wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
+    return strpos($path, '/' . rest_get_url_prefix() . $prefix) !== false;
+  }
+
+  // A bearer header, a ?token= query (the pages search) or a JSON body with a token key (the save, which travels as text/plain to stay a CORS simple request). Presence only: verifying it is the handler's job.
+  private static function request_carries_token(): bool
+  {
+    $auth = (string) ($_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+    if (stripos($auth, 'Bearer ') === 0) {
+      return true;
+    }
+
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    if (!empty($_GET['token'])) {
+      return true;
+    }
+
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+      return false;
+    }
+
+    // php://input can be read again later by the REST server; only the head is needed, the bridge puts the token first.
+    $head = (string) file_get_contents('php://input', false, null, 0, 4096);
+    return strpos($head, '"token"') !== false;
   }
 }

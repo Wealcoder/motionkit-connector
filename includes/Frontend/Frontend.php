@@ -1301,6 +1301,13 @@ final class Frontend
    */
   private function is_editor_preview(): bool
   {
+    // `motionkit=editor` is the editor's flag, the one its other connectors always used. `action=motionkit-editor` is what it sent WordPress before the rename and what an older editor build still sends; it stays accepted, though `action` is a name other front-end plugins read and act on, which is why it was retired.
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    if (isset($_GET['motionkit']) && sanitize_text_field(wp_unslash($_GET['motionkit'])) === 'editor') {
+      return true;
+    }
+
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended
     return isset($_GET['action']) && sanitize_text_field(wp_unslash($_GET['action'])) === 'motionkit-editor';
   }
 

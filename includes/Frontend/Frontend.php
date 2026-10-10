@@ -190,6 +190,11 @@ final class Frontend
     // would appear unchanged after a save + reload.
     add_action('send_headers', [$this, 'no_store_for_editor_preview']);
 
+    // Optimizer plugins defer, delay or rewrite scripts; inside the editor iframe the bridge has to run on load, unprompted. Decided here, from the query string, for the same reason the share bypass is: WP Rocket and LiteSpeed read these constants before anything later could set them.
+    $this->disable_optimizers_for_preview();
+    add_filter('script_loader_tag', [$this, 'exempt_script_from_optimizers'], 20, 2);
+    add_filter('wp_inline_script_attributes', [$this, 'exempt_inline_script_from_optimizers']);
+
     // Register GSAP CDN scripts via core deps filter
     add_filter('motionkit_core_lib_deps', [$this, 'register_required_script']);
     add_filter('motionkit_extension_core_lib_deps', [$this, 'register_required_script']);
@@ -1296,6 +1301,13 @@ final class Frontend
    */
   private function is_editor_preview(): bool
   {
+    // `motionkit=editor` is the editor's flag, the one its other connectors always used. `action=motionkit-editor` is what it sent WordPress before the rename and what an older editor build still sends; it stays accepted, though `action` is a name other front-end plugins read and act on, which is why it was retired.
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    if (isset($_GET['motionkit']) && sanitize_text_field(wp_unslash($_GET['motionkit'])) === 'editor') {
+      return true;
+    }
+
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended
     return isset($_GET['action']) && sanitize_text_field(wp_unslash($_GET['action'])) === 'motionkit-editor';
   }
 
@@ -1441,6 +1453,101 @@ final class Frontend
     if (!defined('DONOTCACHEPAGE')) {
       define('DONOTCACHEPAGE', true);
     }
+  }
+
+  // What each optimizer looks for to leave a script alone: WP Rocket (nowprocket), LiteSpeed and FlyingPress (data-no-optimize/-defer/-minify), Autoptimize (data-noptimize), Cloudflare Rocket Loader (data-cfasync), Jetpack Boost. One list, so the external tag and the inline data tag cannot drift apart.
+  private const OPTIMIZER_EXEMPT_ATTRIBUTES = [
+    'nowprocket'         => true,
+    'data-no-optimize'   => '1',
+    'data-no-defer'      => '1',
+    'data-no-minify'     => '1',
+    'data-noptimize'     => '1',
+    'data-cfasync'       => 'false',
+    'data-jetpack-boost' => 'ignore',
+  ];
+
+  /**
+   * Request-level switches the optimizer plugins honour on an editor or full preview.
+   *
+   * Each is idempotent and a no-op when that plugin is absent. A delay-until-interaction optimizer inside the preview iframe waits for a click that never comes, so the bridge never announces itself and the editor reads the silence as "plugin not detected"; a visitor's page keeps whatever the site owner configured.
+   *
+   * @return void
+   */
+  public function disable_optimizers_for_preview(): void
+  {
+    if (!$this->is_editor_preview() && !$this->is_full_preview()) {
+      return;
+    }
+
+    // W3 Total Cache, WP Rocket (all file optimisation, delay JS included), LiteSpeed Cache.
+    foreach (['DONOTMINIFY', 'DONOTROCKETOPTIMIZE', 'LITESPEED_DISABLE_ALL'] as $constant) {
+      if (!defined($constant)) {
+        define($constant, true);
+      }
+    }
+
+    // LiteSpeed's own API for the same switch, fired once its listener exists; Autoptimize and Perfmatters only offer filters.
+    add_action('wp', static function (): void {
+      do_action('litespeed_disable_all', 'MotionKit editor preview');
+    });
+    add_filter('autoptimize_filter_noptimize', '__return_true');
+    add_filter('perfmatters_delay_js', '__return_false');
+    add_filter('perfmatters_defer_js', '__return_false');
+  }
+
+  /**
+   * Mark this plugin's own script tags so no optimizer defers, delays, minifies or rewrites them on a preview.
+   *
+   * @param string $tag    The <script> tag WordPress is about to print.
+   * @param string $handle The script handle.
+   * @return string
+   */
+  public function exempt_script_from_optimizers(string $tag, string $handle): string
+  {
+    if (!$this->is_own_script($handle) || (!$this->is_editor_preview() && !$this->is_full_preview())) {
+      return $tag;
+    }
+
+    // Already marked — the wp.org plugin does the same on a site running both.
+    if (strpos($tag, 'data-cfasync=') !== false) {
+      return $tag;
+    }
+
+    return (string) preg_replace('/<script\b/', '<script ' . self::optimizer_exempt_attribute_string(), $tag, 1);
+  }
+
+  /**
+   * The same exemption for the inline tags WordPress prints beside those handles — the localized motionkitData above all, which the bridge cannot run without.
+   *
+   * @param array $attributes Attributes of the inline <script> about to be printed.
+   * @return array
+   */
+  public function exempt_inline_script_from_optimizers(array $attributes): array
+  {
+    $id = isset($attributes['id']) && is_string($attributes['id']) ? $attributes['id'] : '';
+    // The id is the handle plus WordPress's own suffix: -js-extra, -js-before, -js-after.
+    $handle = (string) preg_replace('/-js(-extra|-before|-after|-translations)?$/', '', $id);
+    if ($handle === '' || !$this->is_own_script($handle) || (!$this->is_editor_preview() && !$this->is_full_preview())) {
+      return $attributes;
+    }
+
+    return array_merge($attributes, self::OPTIMIZER_EXEMPT_ATTRIBUTES);
+  }
+
+  private function is_own_script(string $handle): bool
+  {
+    return $handle === 'gsap'
+      || isset($this->registered_gsap_handles[$handle])
+      || strpos($handle, 'motionkit') === 0;
+  }
+
+  private static function optimizer_exempt_attribute_string(): string
+  {
+    $parts = [];
+    foreach (self::OPTIMIZER_EXEMPT_ATTRIBUTES as $name => $value) {
+      $parts[] = $value === true ? $name : $name . '="' . esc_attr((string) $value) . '"';
+    }
+    return implode(' ', $parts);
   }
 
   // ─── AJAX Handlers ───────────────────────────────────────────────

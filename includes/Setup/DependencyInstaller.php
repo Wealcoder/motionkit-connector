@@ -12,34 +12,18 @@ namespace MotionKitConnector\Setup;
 /**
  * Dependency Installer
  *
- * The connector is the engine; the main MotionKit plugin ships the admin UI,
- * OAuth connect flow, and license reporting. When a customer installs only the
- * connector (the plugin we distribute by direct link), this class fetches and
- * installs the main MotionKit plugin for them so the pair is complete — and it
- * keeps the main plugin present for as long as the connector is active.
+ * The connector is the animation engine; the main MotionKit plugin provides
+ * the admin dashboard, OAuth connect flow, and settings.
  *
- * Two triggers, one install routine:
+ * To comply with WordPress security guidelines and prevent dropper/trojan
+ * heuristic flags, this class NEVER silently downloads or executes remote code
+ * in the background on admin_init. Instead:
  *
- *   A) First install (activation-flag driven, one-shot):
- *      1. On connector activation we only set a flag (register_activation_hook
- *         runs in a minimal context — the filesystem/upgrader APIs and
- *         pluggable functions aren't fully available, and a fatal there would
- *         abort the connector's own activation). No network work happens here.
- *      2. On the next admin_init — full admin context — we act on the flag and
- *         clear it, so this path runs once.
- *
- *   B) Restore (standing-state driven, every admin_init):
- *      If the connector is active but the main plugin has gone missing (e.g. the
- *      user deleted it), the flag is long gone — so activation can't help. This
- *      path detects the missing dependency on every admin request and, unless
- *      the user has explicitly dismissed ("Don't reinstall"), auto-restores it.
- *      This is what makes the main plugin recoverable after a delete, since with
- *      it gone there is no MotionKit menu or banner to click.
- *
- * Both paths funnel through install_or_activate_main(). A dismiss (stored as an
- * option) suppresses the *automatic* restore but the banner still offers a
- * manual "Reinstall MotionKit" button. Failures are throttled by a cooldown
- * transient so a bad URL can't re-download on every page load.
+ *   1. If the main plugin is already installed on disk, activating it on
+ *      connector activation is handled safely.
+ *   2. If the main plugin is missing, an informative admin banner prompts the
+ *      administrator to explicitly install and activate it via a nonced,
+ *      capability-checked user action.
  *
  * @package MotionKitConnector
  * @since 1.0.0
@@ -63,21 +47,17 @@ final class DependencyInstaller
     private const ERROR_TRANSIENT = 'motionkit_connector_main_install_error';
 
     /**
-     * Option flag: the user asked us to stop auto-reinstalling the main plugin.
-     * The restore banner still offers a manual button, but no automatic install
-     * fires while this is set. Cleared automatically once the main plugin is
-     * active again (a fresh delete after that re-arms auto-restore).
+     * Option flag: the user dismissed the restore notice.
      */
     private const DISMISS_RESTORE_FLAG = 'motionkit_connector_restore_dismissed';
 
     /**
-     * Transient cooldown between automatic restore attempts, so a persistently
-     * failing download (bad URL, server down) can't re-run on every admin page.
+     * Transient lock to prevent concurrent installation requests.
      */
-    private const RESTORE_COOLDOWN = 'motionkit_connector_restore_cooldown';
+    private const INSTALL_LOCK_TRANSIENT = 'motionkit_connector_install_lock';
 
     /**
-     * admin-post action name for the manual "Reinstall" button.
+     * admin-post action name for the manual "Install / Activate" button.
      */
     private const RESTORE_ACTION = 'motionkit_connector_restore_main';
 
@@ -98,41 +78,28 @@ final class DependencyInstaller
     private const MAIN_PLUGIN_SLUG = 'motionkit';
 
     /**
-     * Default direct-download URL for the main plugin zip. Used when the
-     * `motionkit/main_plugin_download_url` filter supplies nothing. A filter
-     * still overrides this, and an empty string here would fall through to the
-     * wordpress.org lookup — so this is the "our server" source of truth.
-     */
-    private const DEFAULT_MAIN_DOWNLOAD_URL = 'https://github.com/Wealcoder/motionkit/releases/download/latest/motionkit.zip';
-
-    /**
      * Register admin hooks. Called once from Plugin::init() on every load.
      *
      * @return void
      */
     public function init(): void
     {
-        // Path A: consume the activation flag (first install / reactivation).
-        add_action('admin_init', [$this, 'maybe_install_main_plugin']);
-        // Path B: detect a missing main plugin and auto-restore it.
-        add_action('admin_init', [$this, 'maybe_restore_main_plugin']);
+        // If connector was activated and the main plugin is already installed on disk, activate it.
+        add_action('admin_init', [$this, 'maybe_activate_existing_main']);
         add_action('admin_notices', [$this, 'render_notice']);
 
-        // Manual actions from the restore banner.
+        // Explicit user actions from the banner.
         add_action('admin_post_' . self::RESTORE_ACTION, [$this, 'handle_manual_restore']);
         add_action('admin_post_' . self::DISMISS_ACTION, [$this, 'handle_dismiss_restore']);
     }
 
     /**
-     * Flag that the main plugin should be installed on the next admin request.
-     * Called from the connector's activation hook (Plugin::activate()) — see the
-     * class docblock for why the real work is deferred out of activation.
+     * Flag that the main plugin should be activated on the next admin request if already on disk.
      *
      * @return void
      */
     public function flag_pending_install(): void
     {
-        // If the main plugin is already active there is nothing to do.
         if ($this->is_main_active()) {
             return;
         }
@@ -140,105 +107,51 @@ final class DependencyInstaller
     }
 
     /**
-     * Path A — resolve the activation flag on a normal admin request. Runs once
-     * per connector activation / reactivation.
+     * If the connector was activated and the main plugin is already present on disk,
+     * safely activate it on admin_init. Never performs remote downloads in the background.
      *
      * @return void
      */
-    public function maybe_install_main_plugin(): void
+    public function maybe_activate_existing_main(): void
     {
         if (!get_option(self::PENDING_FLAG)) {
             return;
         }
 
-        // Only a user who could install the plugin in the first place may
-        // trigger the network install. Leave the flag set for a capable user.
-        if (!current_user_can('install_plugins') || !current_user_can('activate_plugins')) {
+        if (!current_user_can('activate_plugins')) {
             return;
         }
 
-        // Whatever happens below, this attempt is spent — clear the flag first
-        // so a fatal mid-install can't loop the download on every admin page.
         delete_option(self::PENDING_FLAG);
-
-        // A fresh activation is an explicit "I want the pair" signal, so clear
-        // any earlier "don't reinstall" dismissal too.
         delete_option(self::DISMISS_RESTORE_FLAG);
 
         if ($this->is_main_active()) {
             return;
         }
 
-        $result = $this->install_or_activate_main();
-        if (is_wp_error($result)) {
-            $this->store_error($result->get_error_message());
+        // Only activate if files are already locally on disk. Never download remotely on admin_init.
+        if ($this->is_main_installed()) {
+            $this->activate_main();
         }
     }
 
     /**
-     * Path B — standing-state restore. On every admin request, if the connector
-     * is active but the main plugin is gone, auto-reinstall it (unless the user
-     * dismissed that), throttled by a cooldown between failing attempts.
-     *
-     * @return void
-     */
-    public function maybe_restore_main_plugin(): void
-    {
-        // Nothing to restore while it's active. Clear a stale dismissal so a
-        // later delete re-arms auto-restore.
-        if ($this->is_main_active()) {
-            if (get_option(self::DISMISS_RESTORE_FLAG)) {
-                delete_option(self::DISMISS_RESTORE_FLAG);
-            }
-            return;
-        }
-
-        // Path A owns this request when its flag is set — don't double-install.
-        if (get_option(self::PENDING_FLAG)) {
-            return;
-        }
-
-        if (!current_user_can('install_plugins') || !current_user_can('activate_plugins')) {
-            return;
-        }
-
-        // User asked us to stop auto-restoring — the banner still offers a
-        // manual button, but we don't act on our own.
-        if (get_option(self::DISMISS_RESTORE_FLAG)) {
-            return;
-        }
-
-        // Back off after a failure so a bad URL doesn't hammer every page load.
-        if (get_transient(self::RESTORE_COOLDOWN)) {
-            return;
-        }
-
-        $result = $this->install_or_activate_main();
-        if (is_wp_error($result)) {
-            $this->store_error($result->get_error_message());
-            // Cool down before the next automatic attempt.
-            set_transient(self::RESTORE_COOLDOWN, 1, 15 * MINUTE_IN_SECONDS);
-        }
-    }
-
-    /**
-     * Install (or force-install / activate) the main plugin.
-     * Shared by both the activation and the restore paths.
+     * Install (or activate) the main plugin.
+     * Triggered strictly upon explicit administrator user action.
      *
      * @param bool $force Whether to force download and overwrite existing plugin files.
      * @return true|\WP_Error
      */
-    private function install_or_activate_main(bool $force = true)
+    private function install_or_activate_main(bool $force = false)
     {
         // If not forced and already installed, just activate.
         if (!$force && $this->is_main_installed()) {
             return $this->activate_main();
         }
 
-        // Download, force-install (overwriting existing files), then activate.
-        $result = $this->download_and_install_main();
+        // Install from WordPress.org, then activate.
+        $result = $this->install_main_from_wporg();
         if (is_wp_error($result)) {
-            // Fall back to activating the existing plugin if download failed but files exist
             if ($this->is_main_installed()) {
                 return $this->activate_main();
             }
@@ -249,7 +162,7 @@ final class DependencyInstaller
     }
 
     /**
-     * Manual "Reinstall MotionKit" button from the restore banner.
+     * Manual "Install / Activate MotionKit" button handler from the notice banner.
      *
      * @return void
      */
@@ -260,17 +173,25 @@ final class DependencyInstaller
         }
         check_admin_referer(self::RESTORE_ACTION);
 
-        // Explicit request — clear any dismissal and any cooldown, then try now.
+        // Explicit user request — clear any dismissal and prior errors.
         delete_option(self::DISMISS_RESTORE_FLAG);
-        delete_transient(self::RESTORE_COOLDOWN);
         delete_transient(self::ERROR_TRANSIENT);
 
+        // Concurrency lock to prevent duplicate runs
+        if (get_transient(self::INSTALL_LOCK_TRANSIENT)) {
+            wp_safe_redirect($this->redirect_back());
+            exit;
+        }
+        set_transient(self::INSTALL_LOCK_TRANSIENT, 1, 60);
+
         if (!$this->is_main_active()) {
-            $result = $this->install_or_activate_main();
+            $result = $this->install_or_activate_main(false);
             if (is_wp_error($result)) {
                 $this->store_error($result->get_error_message());
             }
         }
+
+        delete_transient(self::INSTALL_LOCK_TRANSIENT);
 
         wp_safe_redirect($this->redirect_back());
         exit;
@@ -311,23 +232,12 @@ final class DependencyInstaller
     }
 
     /**
-     * Download the main plugin zip and install it.
-     *
-     * Source resolution, in order:
-     *   1. A URL supplied via the `motionkit/main_plugin_download_url` filter —
-     *      our own server or any direct zip. Wins when set, so a distributor can
-     *      pin an exact build.
-     *   2. Otherwise the wordpress.org repository, resolved by slug through
-     *      plugins_api(). This is the default once the main plugin is published
-     *      there — no config needed, and WP's normal update channel takes over
-     *      afterward.
+     * Install the main plugin from the official WordPress.org repository.
      *
      * @return true|\WP_Error
      */
-    private function download_and_install_main()
+    private function install_main_from_wporg()
     {
-        // Load the upgrader stack. On a front-end-triggered admin_init these
-        // files may not be included yet.
         if (!function_exists('plugins_api')) {
             require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
         }
@@ -336,33 +246,45 @@ final class DependencyInstaller
         require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
         require_once ABSPATH . 'wp-admin/includes/plugin.php';
 
-        $source = $this->resolve_install_source();
-        if (is_wp_error($source)) {
-            return $source;
+        $api = plugins_api('plugin_information', [
+            'slug'   => self::MAIN_PLUGIN_SLUG,
+            'fields' => ['sections' => false],
+        ]);
+
+        if (is_wp_error($api)) {
+            return new \WP_Error(
+                'wporg_lookup_failed',
+                sprintf(
+                    /* translators: %s: the wordpress.org lookup error message. */
+                    __('WordPress.org lookup for MotionKit failed: %s', 'motionkit-connector'),
+                    $api->get_error_message()
+                )
+            );
+        }
+
+        if (empty($api->download_link)) {
+            return new \WP_Error(
+                'no_download_link',
+                __('WordPress.org did not return a download link for MotionKit.', 'motionkit-connector')
+            );
         }
 
         $skin     = new \Automatic_Upgrader_Skin();
         $upgrader = new \Plugin_Upgrader($skin);
 
-        // Force overwrite existing plugin files with the latest download
-        $result = $upgrader->install($source, [
-            'clear_destination' => true,
-            'overwrite_package' => true,
-        ]);
+        $result = $upgrader->install($api->download_link);
 
         if (is_wp_error($result)) {
             return $result;
         }
         if ($result === false) {
-            // Upgrader returns false on filesystem-credential failure and some
-            // extraction errors; surface the skin's collected messages.
             $messages = $skin->get_upgrade_messages();
             $detail   = is_array($messages) && $messages ? end($messages) : '';
             return new \WP_Error(
                 'install_failed',
                 $detail !== ''
                     ? $detail
-                    : __('The MotionKit plugin could not be installed automatically.', 'motionkit-connector')
+                    : __('The MotionKit plugin could not be installed from WordPress.org.', 'motionkit-connector')
             );
         }
 
@@ -457,62 +379,6 @@ final class DependencyInstaller
     }
 
     /**
-     * Resolve where to install the main plugin from: an explicit zip URL if the
-     * distributor pinned one, otherwise the wordpress.org download URL looked up
-     * by slug.
-     *
-     * @return string|\WP_Error A zip URL, or WP_Error if neither source resolves.
-     */
-    private function resolve_install_source()
-    {
-        // 1. Explicit URL wins (our own server, or a pinned build).
-        $url = $this->main_download_url();
-        if ($url !== '' && $url !== '#') {
-            return $url;
-        }
-
-        // 2. Fall back to wordpress.org by slug.
-        $api = plugins_api('plugin_information', [
-            'slug'   => self::MAIN_PLUGIN_SLUG,
-            'fields' => ['sections' => false],
-        ]);
-
-        if (is_wp_error($api)) {
-            return new \WP_Error(
-                'no_source',
-                sprintf(
-                    /* translators: %s: the wordpress.org lookup error. */
-                    __('No MotionKit download URL is configured, and the wordpress.org lookup failed: %s', 'motionkit-connector'),
-                    $api->get_error_message()
-                )
-            );
-        }
-
-        if (empty($api->download_link)) {
-            return new \WP_Error(
-                'no_source',
-                __('No MotionKit download URL is configured, and wordpress.org returned no download link.', 'motionkit-connector')
-            );
-        }
-
-        return $api->download_link;
-    }
-
-    /**
-     * The direct-download URL for the main plugin. Defaults to our server
-     * (DEFAULT_MAIN_DOWNLOAD_URL) and is filterable so a distributor can pin a
-     * different build without editing this file. Returning an empty string from
-     * the filter forces the wordpress.org-by-slug fallback instead.
-     *
-     * @return string
-     */
-    private function main_download_url(): string
-    {
-        $url = apply_filters('motionkit/main_plugin_download_url', self::DEFAULT_MAIN_DOWNLOAD_URL);
-        return is_string($url) ? trim($url) : '';
-    }
-
-    /**
      * Record an install error for the admin notice.
      *
      * @param string $message
@@ -524,20 +390,14 @@ final class DependencyInstaller
     }
 
     /**
-     * Admin banner for the missing-main-plugin states. Nothing shows while the
-     * main plugin is active (success is silent — WordPress already lists it).
-     *
-     * Three cases when it's missing:
-     *   - An install attempt failed → error notice + manual "Reinstall" button.
-     *   - The user dismissed auto-restore → neutral notice + manual "Reinstall".
-     *   - Auto-restore is armed (will run / is cooling down) → info notice with
-     *     "Reinstall now" and a "Don't reinstall" opt-out.
+     * Admin banner for the missing-main-plugin states.
+     * Prompts the administrator to install or activate MotionKit.
      *
      * @return void
      */
     public function render_notice(): void
     {
-        if (!current_user_can('install_plugins')) {
+        if (!current_user_can('install_plugins') || !current_user_can('activate_plugins')) {
             return;
         }
 
@@ -547,11 +407,8 @@ final class DependencyInstaller
         }
 
         $error     = get_transient(self::ERROR_TRANSIENT);
-        $dismissed  = (bool) get_option(self::DISMISS_RESTORE_FLAG);
+        $dismissed = (bool) get_option(self::DISMISS_RESTORE_FLAG);
 
-        // The banner's primary action always goes through our admin-post
-        // handler so a click clears cooldown/dismissal and installs from the
-        // trusted, configured source (not a raw zip link the browser downloads).
         $reinstall_url = wp_nonce_url(
             admin_url('admin-post.php?action=' . self::RESTORE_ACTION),
             self::RESTORE_ACTION
@@ -561,18 +418,23 @@ final class DependencyInstaller
             self::DISMISS_ACTION
         );
 
+        $is_installed = $this->is_main_installed();
+        $button_label = $is_installed
+            ? __('Activate MotionKit', 'motionkit-connector')
+            : __('Install & Activate MotionKit', 'motionkit-connector');
+
         if ($error !== false) {
             delete_transient(self::ERROR_TRANSIENT);
             ?>
-            <div class="notice notice-error">
+            <div class="notice notice-error is-dismissible">
                 <p>
                     <strong><?php esc_html_e('MotionKit Connector:', 'motionkit-connector'); ?></strong>
-                    <?php esc_html_e('The main MotionKit plugin could not be installed automatically.', 'motionkit-connector'); ?>
+                    <?php esc_html_e('Failed to set up the MotionKit core plugin.', 'motionkit-connector'); ?>
                     <?php echo esc_html($error); ?>
                 </p>
                 <p>
                     <a href="<?php echo esc_url($reinstall_url); ?>" class="button button-primary">
-                        <?php esc_html_e('Reinstall MotionKit', 'motionkit-connector'); ?>
+                        <?php echo esc_html($button_label); ?>
                     </a>
                 </p>
             </div>
@@ -581,36 +443,27 @@ final class DependencyInstaller
         }
 
         if ($dismissed) {
-            ?>
-            <div class="notice notice-warning">
-                <p>
-                    <strong><?php esc_html_e('MotionKit Connector:', 'motionkit-connector'); ?></strong>
-                    <?php esc_html_e('The main MotionKit plugin is not installed. The connector runs the animation engine, but the MotionKit admin screen and connect flow need the main plugin.', 'motionkit-connector'); ?>
-                </p>
-                <p>
-                    <a href="<?php echo esc_url($reinstall_url); ?>" class="button button-primary">
-                        <?php esc_html_e('Reinstall MotionKit', 'motionkit-connector'); ?>
-                    </a>
-                </p>
-            </div>
-            <?php
             return;
         }
 
-        // Auto-restore is armed (either about to run, or cooling down after a
-        // failure). Tell the user, and let them force it now or opt out.
         ?>
-        <div class="notice notice-info">
+        <div class="notice notice-warning">
             <p>
                 <strong><?php esc_html_e('MotionKit Connector:', 'motionkit-connector'); ?></strong>
-                <?php esc_html_e('The main MotionKit plugin is missing and is being reinstalled automatically. Reload in a moment, or reinstall now.', 'motionkit-connector'); ?>
+                <?php
+                if ($is_installed) {
+                    esc_html_e('The MotionKit core plugin is installed but inactive. The connector requires the core plugin for admin settings and animations.', 'motionkit-connector');
+                } else {
+                    esc_html_e('MotionKit Connector requires the MotionKit core plugin to be installed and active.', 'motionkit-connector');
+                }
+                ?>
             </p>
             <p>
                 <a href="<?php echo esc_url($reinstall_url); ?>" class="button button-primary">
-                    <?php esc_html_e('Reinstall now', 'motionkit-connector'); ?>
+                    <?php echo esc_html($button_label); ?>
                 </a>
                 <a href="<?php echo esc_url($dismiss_url); ?>" class="button button-link" style="margin-left:8px;">
-                    <?php esc_html_e("Don't reinstall", 'motionkit-connector'); ?>
+                    <?php esc_html_e('Dismiss', 'motionkit-connector'); ?>
                 </a>
             </p>
         </div>

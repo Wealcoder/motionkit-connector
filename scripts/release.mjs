@@ -271,8 +271,10 @@ if (!go) {
 }
 
 step('Committing and tagging');
-if (git('status', '--porcelain').out) {
-  const add = git('add', ...VERSION_SITES.map((site) => path.relative(ROOT, site.file)));
+const versionPaths = [...new Set(VERSION_SITES.map((site) => path.relative(ROOT, site.file)))];
+// Asked of the version files alone: a version committed beforehand leaves nothing to commit, while the build's line-ending churn would still make the whole tree look dirty.
+if (!git('diff', '--quiet', '--ignore-cr-at-eol', '--', ...versionPaths).ok) {
+  const add = git('add', ...versionPaths);
   if (!add.ok) fail(`git add failed:\n${add.err}`);
   const commit = git('commit', '-m', `Chore (Release): Version ${version}`);
   if (!commit.ok) fail(`git commit failed:\n${commit.err}`);

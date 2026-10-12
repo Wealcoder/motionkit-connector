@@ -90,9 +90,9 @@ final class RestApi
       'permission_callback' => '__return_true',
     ]);
 
-    // GET /motionkit/v1/pages
+    // GET or POST /motionkit/v1/pages. POST lets the editor send the session JWT in a text/plain body (a CORS simple request, no preflight) rather than as ?token= on the URL, where a reusable 24h credential would land in access logs. GET stays for an older bridge build that puts the token in the query; the handler and the permission check read it from either place.
     register_rest_route(self::NAMESPACE, '/pages', [
-      'methods'             => \WP_REST_Server::READABLE,
+      'methods'             => \WP_REST_Server::READABLE . ', ' . \WP_REST_Server::CREATABLE,
       'callback'            => [$this, 'search_pages'],
       'permission_callback' => [$this, 'check_permission_query_token'],
       'args'                => [
@@ -119,6 +119,13 @@ final class RestApi
   public function check_permission_query_token(\WP_REST_Request $request)
   {
     $token = (string) $request->get_param('token');
+    // A text/plain POST body is not parsed into params, so read the token from the decoded body when the query param is absent.
+    if ($token === '') {
+      $body = json_decode((string) $request->get_body(), true);
+      if (is_array($body) && !empty($body['token'])) {
+        $token = (string) $body['token'];
+      }
+    }
     if ($token !== '') {
       if (JwtTokenManager::validate_reusable($token) !== false) {
         return true;
@@ -156,8 +163,17 @@ final class RestApi
       );
     }
 
+    // Cookie fallback for a logged-in administrator, but only with a valid wp_rest nonce. Without the nonce check a cross-site page could ride an admin's cookie to this endpoint, since WordPress core does not nonce-protect a CORS simple request on its own when no nonce is sent. The editor always carries a JWT, so requiring the nonce costs legitimate traffic nothing.
     if (is_user_logged_in() && current_user_can('manage_options')) {
-      return true;
+      $nonce = '';
+      if ($request && $request->get_header('X-WP-Nonce')) {
+        $nonce = (string) $request->get_header('X-WP-Nonce');
+      } elseif (isset($_REQUEST['_wpnonce'])) {
+        $nonce = sanitize_text_field(wp_unslash($_REQUEST['_wpnonce']));
+      }
+      if ($nonce !== '' && wp_verify_nonce($nonce, 'wp_rest')) {
+        return true;
+      }
     }
 
     return new \WP_Error(
@@ -428,9 +444,13 @@ final class RestApi
 
   public function search_pages(\WP_REST_Request $request): \WP_REST_Response
   {
-    $search   = strtolower(trim($request->get_param('s') ?? ''));
-    $per_page = min((int) $request->get_param('per_page'), 50) ?: 10;
-    $page     = max((int) $request->get_param('page'), 1);
+    // A text/plain POST body is not parsed into params, so fall back to the decoded body for each field; a GET request leaves the body empty and keeps using the query params.
+    $body = json_decode((string) $request->get_body(), true);
+    $body = is_array($body) ? $body : [];
+
+    $search   = strtolower(trim((string) ($request->get_param('s') ?? ($body['s'] ?? ''))));
+    $per_page = min((int) ($request->get_param('per_page') ?? ($body['per_page'] ?? 0)), 50) ?: 10;
+    $page     = max((int) ($request->get_param('page') ?? ($body['page'] ?? 0)), 1);
     $all      = [];
 
     if ($page === 1) {

@@ -68,30 +68,6 @@ function restUrl(endpoint) {
   return (motionkitData.rest_url || "") + endpoint;
 }
 
-/**
- * Build a REST URL with query params.
- *
- * The separator has to be chosen per call, not hardcoded: rest_url() is
- * `/wp-json/motionkit/v1/` under pretty permalinks (no query string at all)
- * and `?rest_route=/motionkit/v1/` under plain ones. Appending "&s=..." to
- * the pretty form makes the whole thing a single path segment, so the
- * request 404s with rest_no_route — and since fetch() does not reject on
- * 404 and the error body parses as JSON, it fails silently.
- *
- * Params that are undefined, null or "" are omitted.
- */
-function restUrlWithQuery(endpoint, params) {
-  const url = restUrl(endpoint);
-  const query = Object.entries(params)
-    .filter(([, value]) => value !== undefined && value !== null && value !== "")
-    .map(
-      ([key, value]) =>
-        encodeURIComponent(key) + "=" + encodeURIComponent(value),
-    )
-    .join("&");
-  if (!query) return url;
-  return url + (url.includes("?") ? "&" : "?") + query;
-}
 
 /**
  * Extract the motionkit_token (JWT) for editor authentication.
@@ -362,16 +338,15 @@ function receivePageConfig() {
         const page = event.data.page || 1;
         const perPage = event.data.per_page || 10;
         const token = getMotionKitToken();
-        // Token in query param — keeps the request as a CORS simple GET
-        // (no Authorization header, no preflight).
-        const searchUrl = restUrlWithQuery("pages", {
-          s: query,
-          page,
-          per_page: perPage,
-          token,
-        });
-
-        fetch(searchUrl)
+        // Token in a text/plain POST body, not ?token= on the URL: a reusable
+        // 24h credential in a query string lands in server and proxy access
+        // logs. text/plain keeps it a CORS simple request (no preflight), the
+        // same reason /save uses it.
+        fetch(restUrl("pages"), {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=UTF-8" },
+          body: JSON.stringify({ token, s: query, page, per_page: perPage }),
+        })
           .then((r) => {
             // fetch() only rejects on network failure, so without this a 404
             // or 401 flows into the success branch, `res.data` is not an

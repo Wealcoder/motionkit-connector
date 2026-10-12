@@ -12,22 +12,22 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
     exit;
 }
 
-// ── Options actually written by this plugin ──
-$mk_options = [
-    // Activation bookkeeping
+global $wpdb;
+
+// Whether the sibling MotionKit plugin is still installed. Both plugins read and write the same animation content and the same JWT secret, so deleting this one while the other stays must not take that shared data with it. Checked on disk rather than by an active_plugins lookup, because a user may delete an inactive plugin, and because the sibling's own loaded-constant is not defined during this plugin's uninstall.
+$mk_sibling_present = file_exists(WP_PLUGIN_DIR . '/motionkit/motionkit.php');
+
+// ── Secrets, auth and bookkeeping: always removed ──
+// These are per-install credentials and derived state. If the sibling plugin is still here it re-mints its own JWT secret and holds its own connection, so dropping these frees nothing it needs and leaves no reusable token behind in the database after a delete, which is what wp.org expects.
+$mk_always = [
+    // Activation bookkeeping.
     'motionkit_extension_version',
     'motionkit_extension_creation_date',
     // One-shot autoload-migration sentinel (maybe_fix_autoload_flags).
     'motionkit_autoload_fixed_v1',
-    // Settings / animation data — TEMPORARILY DISABLED so deleting the plugin on a test site keeps that site's animations; re-enable before shipping, since wp.org expects an uninstall to remove what the plugin created.
-    // 'motionkit_global_settings',
-    // 'motionkit_global_animations',
-    // 'motionkit-page-transition-code',
-    // 'motionkit_animation_folders',
-    // 'motionkit_favourite_cloud_animation',
-    // 'motionkit_page_settings_updated_at',
-    // Auth / session secrets
+    // Auth / session secrets.
     'motionkit_jwt_secret',
+    'motionkit_jwt_secret_source',
     'motionkit_used_jtis',
     // OAuth state is an option (not a transient) so a Redis eviction cannot drop it mid-flow; the transient sweep at the bottom no longer covers it.
     'motionkit_oauth_state',
@@ -46,40 +46,56 @@ $mk_options = [
     'motionkit_api_key',
 ];
 
-// foreach ($mk_options as $mk_option) {
-//     delete_option($mk_option);
-// }
+foreach ($mk_always as $mk_option) {
+    delete_option($mk_option);
+}
 
-// // ── Scheduled event ──
-// $mk_cron = wp_next_scheduled('motionkit_license_refresh');
-// if ($mk_cron) {
-//     wp_unschedule_event($mk_cron, 'motionkit_license_refresh');
-// }
-// wp_clear_scheduled_hook('motionkit_license_refresh');
+// ── Scheduled event ──
+$mk_cron = wp_next_scheduled('motionkit_license_refresh');
+if ($mk_cron) {
+    wp_unschedule_event($mk_cron, 'motionkit_license_refresh');
+}
+wp_clear_scheduled_hook('motionkit_license_refresh');
 
-// ── Per-page animation/settings meta + option rows ──
-// Keys are motionkit_pg_animation_<type> / motionkit_pg_settings_<type>.
-// TEMPORARILY DISABLED together with the animation options above — same reason, and they must be re-enabled as one group or a delete would leave half the data behind.
-global $wpdb;
+// ── Animation content: removed only when no sibling plugin shares it ──
+// The settings/animation options and every motionkit_pg_* meta and option row are the user's actual work. They go when this is the last MotionKit plugin on the site; a delete of one of a paired install keeps them for the one that remains.
+if (!$mk_sibling_present) {
+    $mk_content_options = [
+        'motionkit_global_settings',
+        'motionkit_global_animations',
+        'motionkit_global_animations_draft',
+        'motionkit-page-transition-code',
+        'motionkit_animation_folders',
+        'motionkit_favourite_cloud_animation',
+        'motionkit_favourite_cloud_animations',
+        'motionkit_page_settings_updated_at',
+        'motionkit_share_secret',
+    ];
+    foreach ($mk_content_options as $mk_option) {
+        delete_option($mk_option);
+    }
 
-// Post meta.
-// $wpdb->query(
-//     "DELETE FROM {$wpdb->postmeta} WHERE meta_key LIKE 'motionkit\\_pg\\_%'"
-// );
+    // Per-page animation/settings/draft/share meta + option rows. Keys are motionkit_pg_<bucket>_<type>; they must be removed as one group or a delete would leave half a page's data behind.
 
-// Term meta (table may not exist on very old installs).
-// if (!empty($wpdb->termmeta)) {
-//     $wpdb->query(
-//         "DELETE FROM {$wpdb->termmeta} WHERE meta_key LIKE 'motionkit\\_pg\\_%'"
-//     );
-// }
+    // Post meta.
+    $wpdb->query(
+        "DELETE FROM {$wpdb->postmeta} WHERE meta_key LIKE 'motionkit\\_pg\\_%'"
+    );
 
-// Option-stored page configs (front/archive/404/search).
-// $wpdb->query(
-//     "DELETE FROM {$wpdb->options} WHERE option_name LIKE 'motionkit\\_pg\\_%'"
-// );
+    // Term meta (table may not exist on very old installs).
+    if (!empty($wpdb->termmeta)) {
+        $wpdb->query(
+            "DELETE FROM {$wpdb->termmeta} WHERE meta_key LIKE 'motionkit\\_pg\\_%'"
+        );
+    }
 
-// Transients are caches, not content — still cleared.
+    // Option-stored page configs (front/archive/404/search).
+    $wpdb->query(
+        "DELETE FROM {$wpdb->options} WHERE option_name LIKE 'motionkit\\_pg\\_%'"
+    );
+}
+
+// Transients are caches, not content — always cleared.
 $wpdb->query(
     "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_motionkit\\_%'
      OR option_name LIKE '\\_transient\\_timeout\\_motionkit\\_%'"

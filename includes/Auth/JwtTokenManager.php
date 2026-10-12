@@ -38,6 +38,17 @@ final class JwtTokenManager
   private const JTI_OPTION = 'motionkit_used_jtis';
 
   /**
+   * Records where motionkit_jwt_secret came from: 'editor' (the editor's own
+   * signing secret, fetched once connected) or 'local' (a fallback minted here).
+   * A local secret is replaced by the editor's on a later fetch; an unmarked or
+   * local secret never short-circuits that fetch, so a random fallback written
+   * before the site connected — or forced by an unauthenticated token hitting
+   * get_secret — can no longer stick for good and leave the site signing with a
+   * secret the editor never issued.
+   */
+  private const SECRET_SOURCE_OPTION = 'motionkit_jwt_secret_source';
+
+  /**
    * Generate a signed JWT by calling the MotionKit server's /connect/launch endpoint.
    *
    * @param string $site_url The WordPress site URL being edited
@@ -184,11 +195,14 @@ final class JwtTokenManager
   private static function get_secret(): string
   {
     $secret = get_option('motionkit_jwt_secret');
+    $usable = is_string($secret) && $secret !== '';
 
-    if (!empty($secret)) {
+    // A secret the editor itself supplied is authoritative — keep it and make no outbound call.
+    if ($usable && get_option(self::SECRET_SOURCE_OPTION, '') === 'editor') {
       return $secret;
     }
 
+    // No secret, or only a local fallback: ask the editor for its real signing secret once connected. Fetching here is what lets a local secret be replaced rather than stick for good.
     $editor_url = get_option('motionkit_editor_url', '');
     $api_key = get_option('motionkit_api_key', '');
 
@@ -197,22 +211,31 @@ final class JwtTokenManager
         rtrim($editor_url, '/') . '/connect/token-secret',
         [
           'headers' => ['Authorization' => 'Bearer ' . $api_key],
-          'timeout' => 10,
+          // 3s, not 10s: get_secret runs inside validate_reusable, which an unauthenticated /save reaches on any three-part token, so this call must not be a 10s worker-stall an attacker can trigger.
+          'timeout' => 3,
         ]
       );
 
       if (!is_wp_error($response)) {
         $body = json_decode(wp_remote_retrieve_body($response), true);
         if (!empty($body['token_secret'])) {
-          $secret = $body['token_secret'];
+          $secret = (string) $body['token_secret'];
           update_option('motionkit_jwt_secret', $secret, false);
+          update_option(self::SECRET_SOURCE_OPTION, 'editor', false);
           return $secret;
         }
       }
     }
 
+    // Keep an existing local secret rather than rotating it on every call.
+    if ($usable) {
+      return $secret;
+    }
+
+    // Local fallback so a token this site mints for its own launches works before it is ever connected. Marked local, so the editor's secret replaces it on a later fetch instead of this value being signed with for good.
     $secret = bin2hex(random_bytes(32));
     update_option('motionkit_jwt_secret', $secret, false);
+    update_option(self::SECRET_SOURCE_OPTION, 'local', false);
 
     return $secret;
   }

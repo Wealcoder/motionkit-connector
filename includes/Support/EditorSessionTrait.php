@@ -27,6 +27,11 @@ trait EditorSessionTrait
    */
   private function verify_server_session(string $token): bool
   {
+    // Refuse anything that is not shaped like an unexpired editor-issued JWT before spending an outbound call on it. Unauthenticated /save reaches this on any token that fails local HMAC validation, so without this gate a flood of random tokens turns into one 3s wp_remote_post each — amplification at our editor and a worker tied up per request, for tokens that could never be valid. The signature is still the server's to verify; this only decides whether the call is worth making, exactly as the core plugin's validator does.
+    if (!self::token_claims_editor_issuer($token)) {
+      return false;
+    }
+
     $cache_key = 'motionkit_session_' . substr(md5($token), 0, 16);
     $cached = get_transient($cache_key);
 
@@ -37,7 +42,7 @@ trait EditorSessionTrait
     $verify_url = OAuthHandler::get_verify_session_url();
 
     $response = wp_remote_post($verify_url, [
-      'timeout' => 10,
+      'timeout' => 3,
       'headers' => ['Content-Type' => 'application/json'],
       'body'    => wp_json_encode(['token' => $token]),
     ]);
@@ -52,6 +57,38 @@ trait EditorSessionTrait
     set_transient($cache_key, $valid ? 'valid' : 'invalid', 300);
 
     return $valid;
+  }
+
+  /**
+   * Whether a token is shaped like an unexpired MotionKit-issued JWT.
+   *
+   * Reads the payload only; the signature is verified by the editor server (or
+   * by JwtTokenManager for a locally-signed token). This is a cheap pre-filter
+   * so a forged or expired token never costs an outbound verification call.
+   *
+   * @param string $token The JWT string.
+   * @return bool
+   */
+  private static function token_claims_editor_issuer(string $token): bool
+  {
+    $parts = explode('.', $token);
+    if (count($parts) !== 3) {
+      return false;
+    }
+
+    $json = base64_decode(strtr($parts[1], '-_', '+/'), false);
+    $payload = is_string($json) ? json_decode($json, true) : null;
+    if (!is_array($payload)) {
+      return false;
+    }
+
+    // Issued by the editor server, or by this site for its own launches; a token claiming neither issuer is never one this endpoint should verify.
+    $iss = isset($payload['iss']) ? (string) $payload['iss'] : '';
+    if ($iss !== 'motionkit-server' && $iss !== home_url() && $iss !== home_url('/')) {
+      return false;
+    }
+
+    return isset($payload['exp']) && time() < (int) $payload['exp'];
   }
 
   /**

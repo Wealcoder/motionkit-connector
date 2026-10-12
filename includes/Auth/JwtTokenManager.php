@@ -48,6 +48,9 @@ final class JwtTokenManager
    */
   private const SECRET_SOURCE_OPTION = 'motionkit_jwt_secret_source';
 
+  // Gates the legacy /connect/token-secret fetch in get_secret(). A site upgraded from an older build holds an unmarked secret, so without this every token check on a site still carrying a dead legacy api key would make an outbound call that earlier builds never made.
+  private const SECRET_SYNC_LOCK = 'motionkit_connector_secret_sync_lock';
+
   /**
    * Generate a signed JWT by calling the MotionKit server's /connect/launch endpoint.
    *
@@ -206,7 +209,10 @@ final class JwtTokenManager
     $editor_url = get_option('motionkit_editor_url', '');
     $api_key = get_option('motionkit_api_key', '');
 
-    if ($editor_url && $api_key) {
+    // At most one attempt per window: five minutes while a usable secret already signs tokens, thirty seconds when there is none yet. A good answer marks the secret 'editor', which ends the attempts for good.
+    if ($editor_url && $api_key && !get_transient(self::SECRET_SYNC_LOCK)) {
+      set_transient(self::SECRET_SYNC_LOCK, 1, $usable ? 300 : 30);
+
       $response = wp_remote_get(
         rtrim($editor_url, '/') . '/connect/token-secret',
         [

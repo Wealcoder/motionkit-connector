@@ -89,6 +89,7 @@ final class OAuthHandler
     delete_option('motionkit_used_jtis');
     // Cleared with the secret so a reconnect re-fetches the editor's secret rather than reading a dangling 'editor' marker left over from the old one.
     delete_option('motionkit_jwt_secret_source');
+    delete_transient('motionkit_connector_secret_sync_lock');
   }
 
   private static function decrypt(string $encrypted)

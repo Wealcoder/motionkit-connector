@@ -171,3 +171,12 @@ fallback) in the `motionkit-editor` repo. The server never sees these names —
 | `src/lib/engine-wrapper.js` | Host wrapper — the only caller of `window.MotionKitEngine` |
 | `src/modules/editor-bridge.js` | postMessage + REST bridge to the editor |
 | `uninstall.php` | Data removal on delete. wp.org expects an uninstall to remove what the plugin created — if anything here is commented out for test sites, it must be restored before shipping. |
+
+## Releasing
+
+`npm run release -- 1.3.1` is the whole release. It refuses up front when the tree is dirty, the branch is behind origin, the tag exists or `gh` is not signed in. It then sets the version in all four places (header, `MOTIONKIT_CONNECTOR_VERSION`, `Plugin::VERSION`, `package.json`), runs `npm run build`, checks the vendored engine is present, refuses if the build changed a committed file (line endings alone do not count), lints every PHP file and writes `dist/motionkit-with-gsap-1.3.1.zip`. After a confirm it commits `Chore (Release): Version 1.3.1`, tags `v1.3.1`, pushes the branch and tag atomically, and creates the GitHub release with the zip and GitHub's generated notes.
+
+- `npm run release` releases the version already in the files; `--zip-only` stops after the zip; `--yes` skips the confirm.
+- A failure or a "no" before the commit puts the version strings back.
+- Customers update from my.motionkit.io, not GitHub: the zip still goes to Download 17 by hand, as the script's last line says.
+- There is no release workflow: the script is the only thing that creates releases, so a tag push never builds a second zip in CI.

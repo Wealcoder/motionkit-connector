@@ -234,10 +234,94 @@ final class PluginUpdater
             'tested'        => $info->tested,
             'requires'      => $info->requires,
             'requires_php'  => $info->requires_php,
-            'sections'      => $info->sections,
+            'sections'      => $this->sections_for($info),
             'banners'       => $info->banners,
-            'icons'         => $info->icons,
+            'icons'         => $this->icons_for($info),
         ];
+    }
+
+    // A section the store leaves empty is read from the bundled readme.txt, so the modal is never blank because the store's product page was not filled in.
+    private function sections_for(object $info): array
+    {
+        $sections = array_filter((array) $info->sections, static function ($html) {
+            return '' !== trim(wp_strip_all_tags((string) $html));
+        });
+
+        return $sections + self::readme_sections();
+    }
+
+    // The store's icons come from the product's featured image, which the store theme also prints at checkout, so the bundled icon stands in when it has none.
+    private function icons_for(object $info): array
+    {
+        $icons = array_filter((array) $info->icons);
+
+        if ($icons) {
+            return $icons;
+        }
+
+        return [
+            '1x' => MOTIONKIT_CONNECTOR_PLUGIN_URL . 'assets/images/icon-128x128.gif',
+            '2x' => MOTIONKIT_CONNECTOR_PLUGIN_URL . 'assets/images/icon-256x256.gif',
+        ];
+    }
+
+    /**
+     * The Description and Changelog of the bundled readme.txt as HTML, keyed the way the modal expects.
+     *
+     * @return array<string, string>
+     */
+    private static function readme_sections(): array
+    {
+        $file = MOTIONKIT_CONNECTOR_PLUGIN_DIR . 'readme.txt';
+
+        if (!is_readable($file)) {
+            return [];
+        }
+
+        $parts = preg_split('/^==\s*(.+?)\s*==\s*$/m', (string) file_get_contents($file), -1, PREG_SPLIT_DELIM_CAPTURE); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- a local file, not a URL.
+        $sections = [];
+
+        for ($i = 1; $i + 1 < count($parts); $i += 2) {
+            $key = sanitize_key($parts[$i]);
+
+            if (in_array($key, ['description', 'changelog'], true)) {
+                $sections[$key] = self::readme_to_html($parts[$i + 1]);
+            }
+        }
+
+        return array_filter($sections);
+    }
+
+    // Just the readme syntax this plugin's readme uses: "= 1.0.0 =" headings, "* " list items and plain paragraphs.
+    private static function readme_to_html(string $text): string
+    {
+        $html = '';
+        $list = false;
+
+        foreach (preg_split('/\R/', trim($text)) as $line) {
+            $line = trim($line);
+            $is_item = 0 === strpos($line, '* ');
+
+            if ($list && !$is_item) {
+                $html .= '</ul>';
+                $list = false;
+            }
+
+            if ('' === $line) {
+                continue;
+            }
+
+            if ($is_item) {
+                $html .= ($list ? '' : '<ul>') . '<li>' . esc_html(substr($line, 2)) . '</li>';
+                $list = true;
+            } elseif (preg_match('/^=\s*(.+?)\s*=$/', $line, $m)) {
+                $html .= '<h4>' . esc_html($m[1]) . '</h4>';
+            } else {
+                $html .= '<p>' . esc_html($line) . '</p>';
+            }
+        }
+
+        return $html . ($list ? '</ul>' : '');
     }
 
     private function to_update_item(object $info): object
@@ -252,7 +336,7 @@ final class PluginUpdater
             'tested'       => $info->tested,
             'requires'     => $info->requires,
             'requires_php' => $info->requires_php,
-            'icons'        => $info->icons,
+            'icons'        => $this->icons_for($info),
             'banners'      => $info->banners,
         ];
     }

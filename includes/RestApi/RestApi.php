@@ -469,6 +469,7 @@ final class RestApi
             'type'  => $sp['type'],
             'group' => 'Special Pages',
             'url'   => $this->editor_url($sp['url']),
+            'animationCount' => $this->special_page_animation_count($sp['type']),
           ];
         }
       }
@@ -575,6 +576,7 @@ final class RestApi
         'type'  => $post->post_type,
         'group' => $type_obj ? $type_obj->labels->singular_name : ucfirst($post->post_type),
         'url'   => $this->editor_url(get_permalink($post)),
+        'animationCount' => $this->post_animation_count($post),
       ];
     }
 
@@ -607,6 +609,7 @@ final class RestApi
             'type'  => $tax->name,
             'group' => $tax->labels->singular_name ?: ucfirst($tax->name),
             'url'   => $this->editor_url($link),
+            'animationCount' => $this->animation_count('term_meta', $tax->name, (int) $term->term_id),
           ];
         }
       }
@@ -631,6 +634,7 @@ final class RestApi
             'type'  => 'author',
             'group' => 'Author',
             'url'   => $this->editor_url(get_author_posts_url($author->ID)),
+            'animationCount' => $this->animation_count('option', 'author', (int) $author->ID),
           ];
         }
       }
@@ -658,6 +662,57 @@ final class RestApi
   private function editor_url(string $url): string
   {
     return add_query_arg('motionkit', 'editor', $url);
+  }
+
+  /**
+   * How many animations the editor lists on a page — published and unpublished, one per id.
+   *
+   * Built from the same descriptor getCurrentPageType() produces when that page
+   * is opened, so the count reads the exact key the editor will load.
+   *
+   * @param string $store_type post_meta, term_meta or option.
+   * @param string $type       Page type, as getCurrentPageType() names it.
+   * @param int    $id         Post, term or author id; 0 when there is none.
+   * @return int
+   */
+  private function animation_count(string $store_type, string $type, int $id): int
+  {
+    return count($this->resolver->page_for_editor([
+      'id'         => $id,
+      'type'       => $type,
+      'store_type' => $store_type,
+      'option'     => $this->page_type->buildOptionName($type, $id, $store_type),
+    ]));
+  }
+
+  // The static front page and the posts page open as front_page / home rather than as their post type, so their animations live under that key.
+  private function post_animation_count(\WP_Post $post): int
+  {
+    $id = (int) $post->ID;
+
+    if ($id === (int) get_option('page_on_front')) {
+      return $this->animation_count('post_meta', 'front_page', $id);
+    }
+    if ($id === (int) get_option('page_for_posts')) {
+      return $this->animation_count('post_meta', 'home', $id);
+    }
+
+    return $this->animation_count('post_meta', $post->post_type, $id);
+  }
+
+  // Mirrors the is_front_page() / is_home() / is_search() / is_404() branches of getCurrentPageType(); the list calls the posts page "blog", storage calls it "home".
+  private function special_page_animation_count(string $type): int
+  {
+    if ($type === 'front_page' || $type === 'blog') {
+      $storage_type = $type === 'blog' ? 'home' : 'front_page';
+      $page_id = (int) get_option($type === 'blog' ? 'page_for_posts' : 'page_on_front');
+
+      return $page_id > 0
+        ? $this->animation_count('post_meta', $storage_type, $page_id)
+        : $this->animation_count('option', $storage_type, 0);
+    }
+
+    return $this->animation_count('option', $type, 0);
   }
 
   /**

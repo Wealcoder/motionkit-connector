@@ -134,6 +134,12 @@ final class PluginRowLinks
             return $meta;
         }
 
+        // WordPress adds "Visit plugin site" whenever the updater has no "View details" to offer; it goes where Visit site goes, so it is dropped rather than shown twice.
+        $core_link = '>' . __('Visit plugin site') . '<'; // phpcs:ignore WordPress.WP.I18n.MissingArgDomain -- core's own string, matched to find core's link.
+        $meta = array_values(array_filter($meta, static function ($link) use ($core_link) {
+            return false === strpos((string) $link, $core_link);
+        }));
+
         $meta[] = sprintf(
             '<a href="%s" target="_blank" rel="noopener">%s</a>',
             esc_url($this->site_url()),

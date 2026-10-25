@@ -10,6 +10,7 @@
 namespace MotionKitConnector\Setup;
 
 use MotionKitConnector\Auth\LicenseStatus;
+use MotionKitConnector\Common\AnimationResolver;
 
 // Prevent direct access
 if (!defined('ABSPATH')) {
@@ -23,6 +24,12 @@ if (!defined('ABSPATH')) {
  * this site's URL if it is not yet, and only then saved for the updater. It is
  * the fallback for sites the editor server does not hand a key to.
  *
+ * It is offered late and only where it matters: a site that has had the plugin
+ * for a month, has animations saved from the editor, and still has no key from
+ * any source. A fresh install is still in the connect flow, which is the normal
+ * way to get the key, and a site without animations has nothing an update could
+ * break — asking either for a key only competes with "connect this site".
+ *
  * @package MotionKitConnector
  * @since 1.0.1
  */
@@ -30,6 +37,10 @@ final class LicenseKeyField
 {
     private const SAVE_ACTION = 'motionkit_connector_save_key';
     private const RESULT_ARG = 'motionkit_key_result';
+
+    // Stamped by Plugin::activate() on the first activation, as current_time('mysql') in the site's own timezone.
+    private const INSTALLED_AT_OPTION = 'motionkit_extension_creation_date';
+    private const MIN_INSTALL_AGE = 30 * DAY_IN_SECONDS;
 
     // EDD statuses a saved key can end on; anything else is reported as invalid.
     private const RESULTS = [
@@ -67,8 +78,8 @@ final class LicenseKeyField
 
         $manual = LicenseStatus::get_manual_key();
 
-        // The connected account already supplies the key, so there is nothing to ask for; the row only appears for a key typed in by hand or a site with none.
-        if ($manual === '' && LicenseStatus::get_license_key() !== '') {
+        // A key typed in by hand always shows its row, so it can be removed; otherwise the field appears only once the site qualifies for the fallback.
+        if ($manual === '' && !self::is_offered()) {
             return;
         }
 
@@ -164,6 +175,81 @@ final class LicenseKeyField
         [$type, $message] = $messages[$result];
 
         printf('<div class="notice notice-%1$s is-dismissible"><p>%2$s</p></div>', esc_attr($type), esc_html($message));
+    }
+
+    /**
+     * Whether the Plugins row should offer the key field at all.
+     *
+     * Cheapest check first: the key is two option reads, the install age one
+     * more, and only a site that passes both pays for the animation lookup.
+     *
+     * @return bool
+     */
+    public static function is_offered(): bool
+    {
+        return LicenseStatus::get_license_key() === ''
+            && self::installed_for_a_month()
+            && self::site_has_animations();
+    }
+
+    private static function installed_for_a_month(): bool
+    {
+        $installed = get_option(self::INSTALLED_AT_OPTION);
+
+        // No stamp means the activation hook never ran for this copy; the clock starts now rather than never, so the field is still reachable a month from here.
+        if (!is_string($installed) || '' === $installed) {
+            update_option(self::INSTALLED_AT_OPTION, current_time('mysql'), false);
+            return false;
+        }
+
+        $installed_gmt = (int) get_gmt_from_date($installed, 'U');
+
+        // A stamp that does not parse must not hide the field forever.
+        if ($installed_gmt <= 0) {
+            return true;
+        }
+
+        return time() - $installed_gmt >= self::MIN_INSTALL_AGE;
+    }
+
+    // Any animation saved from the editor, live or not: the two global options first, then one existence query per table for the page keys.
+    private static function site_has_animations(): bool
+    {
+        foreach ([AnimationResolver::GLOBAL_PUBLISHED_OPTION, AnimationResolver::GLOBAL_DRAFT_OPTION] as $option) {
+            $bucket = get_option($option, []);
+
+            if (is_array($bucket) && [] !== $bucket) {
+                return true;
+            }
+        }
+
+        global $wpdb;
+
+        $prefixes = [AnimationResolver::PAGE_PUBLISHED_PREFIX, AnimationResolver::PAGE_DRAFT_PREFIX];
+        $tables = [
+            [$wpdb->postmeta, 'meta_key', 'meta_value'],
+            [$wpdb->termmeta, 'meta_key', 'meta_value'],
+            [$wpdb->options, 'option_name', 'option_value'],
+        ];
+
+        foreach ($tables as [$table, $key_column, $value_column]) {
+            foreach ($prefixes as $prefix) {
+                // A page whose animations were all deleted keeps an empty bucket, serialized or as JSON, which must not count as having one.
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- an existence check on this plugin's own keys; the Plugins row is the only caller.
+                $found = $wpdb->get_var(
+                    $wpdb->prepare(
+                        "SELECT 1 FROM {$table} WHERE {$key_column} LIKE %s AND {$value_column} NOT IN ('', 'a:0:{}', '[]') LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table and column names are $wpdb's own; the only value goes through prepare().
+                        $wpdb->esc_like($prefix) . '%'
+                    )
+                );
+
+                if ($found) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private function check(string $key): string

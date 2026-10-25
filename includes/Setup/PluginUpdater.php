@@ -152,10 +152,15 @@ final class PluginUpdater
             return;
         }
 
+        // The key field is only mentioned when the row below actually shows it; otherwise connecting is the one thing to do.
+        $no_license = LicenseKeyField::is_offered()
+            ? __('MotionKit Connector updates are not enabled on this site yet. Connect it to your licensed MotionKit account, or enter your license key under MotionKit Connector below, then check again.', 'motionkit-connector')
+            : __('MotionKit Connector updates are not enabled on this site yet. Connect it to your licensed MotionKit account, then check again.', 'motionkit-connector');
+
         $messages = [
             'available'  => ['success', __('A new version of MotionKit Connector is available. Use "update now" in its row below.', 'motionkit-connector')],
             'current'    => ['success', __('MotionKit Connector is up to date.', 'motionkit-connector')],
-            'no_license' => ['warning', __('MotionKit Connector updates are not enabled on this site yet. Connect it to your licensed MotionKit account, or enter your license key under MotionKit Connector below, then check again.', 'motionkit-connector')],
+            'no_license' => ['warning', $no_license],
             'error'      => ['error', __('Could not reach the MotionKit update server. Please try again in a few minutes.', 'motionkit-connector')],
         ];
 

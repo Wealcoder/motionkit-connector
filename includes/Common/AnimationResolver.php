@@ -44,12 +44,12 @@ final class AnimationResolver
   /**
    * Key prefix a page's published animations are stored under.
    */
-  private const PAGE_PUBLISHED_PREFIX = 'motionkit_pg_animation_';
+  public const PAGE_PUBLISHED_PREFIX = 'motionkit_pg_animation_';
 
   /**
    * Key prefix a page's draft animations are stored under.
    */
-  private const PAGE_DRAFT_PREFIX = 'motionkit_pg_draft_';
+  public const PAGE_DRAFT_PREFIX = 'motionkit_pg_draft_';
 
   /**
    * Field carrying an animation's working copy on the wire.

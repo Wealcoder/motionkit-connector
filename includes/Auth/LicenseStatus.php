@@ -148,17 +148,17 @@ final class LicenseStatus
   {
     if (!OAuthHandler::is_connected()) {
       self::clear();
-      return new \WP_Error('not_connected', __('This site is not connected to MotionKit.', 'motionkit-connector'));
+      return new \WP_Error('not_connected', __('This site is not connected to MotionKit.', 'motionkit-with-gsap'));
     }
 
     if (!$force && get_transient(self::TRANSIENT_LOCK)) {
-      return new \WP_Error('locked', __('A license check is already in progress.', 'motionkit-connector'));
+      return new \WP_Error('locked', __('A license check is already in progress.', 'motionkit-with-gsap'));
     }
 
     $token = OAuthHandler::get_access_token();
 
     if (!$token) {
-      return new \WP_Error('no_token', __('No access token stored locally.', 'motionkit-connector'));
+      return new \WP_Error('no_token', __('No access token stored locally.', 'motionkit-with-gsap'));
     }
 
     set_transient(self::TRANSIENT_LOCK, 1, MINUTE_IN_SECONDS);
@@ -191,7 +191,7 @@ final class LicenseStatus
 
       return new \WP_Error(
         'site_not_launched',
-        __('This site has not launched the MotionKit editor yet, so there is no license to check.', 'motionkit-connector')
+        __('This site has not launched the MotionKit editor yet, so there is no license to check.', 'motionkit-with-gsap')
       );
     }
 
@@ -200,7 +200,7 @@ final class LicenseStatus
         'bad_response',
         sprintf(
           /* translators: %d: HTTP status code returned by the MotionKit server. */
-          __('Unexpected response from the MotionKit server (HTTP %d).', 'motionkit-connector'),
+          __('Unexpected response from the MotionKit server (HTTP %d).', 'motionkit-with-gsap'),
           $code
         )
       );
@@ -287,7 +287,7 @@ final class LicenseStatus
   public static function handle_manual_refresh(): void
   {
     if (!current_user_can('manage_options')) {
-      wp_die(esc_html__('You do not have permission to perform this action.', 'motionkit-connector'));
+      wp_die(esc_html__('You do not have permission to perform this action.', 'motionkit-with-gsap'));
     }
 
     check_admin_referer('motionkit_refresh_license');
@@ -467,9 +467,9 @@ final class LicenseStatus
       ?>
       <div class="notice notice-warning">
         <p>
-          <strong><?php esc_html_e('MotionKit:', 'motionkit-connector'); ?></strong>
-          <?php esc_html_e('This site\'s connection needs refreshing. Your license is active, but the local connection token is out of date — reconnect this site to restore full verification.', 'motionkit-connector'); ?>
-          <a href="<?php echo esc_url($connect_url); ?>"><?php esc_html_e('Reconnect this site', 'motionkit-connector'); ?></a>
+          <strong><?php esc_html_e('MotionKit:', 'motionkit-with-gsap'); ?></strong>
+          <?php esc_html_e('This site\'s connection needs refreshing. Your license is active, but the local connection token is out of date — reconnect this site to restore full verification.', 'motionkit-with-gsap'); ?>
+          <a href="<?php echo esc_url($connect_url); ?>"><?php esc_html_e('Reconnect this site', 'motionkit-with-gsap'); ?></a>
         </p>
       </div>
       <?php
@@ -489,26 +489,26 @@ final class LicenseStatus
     if ($state['limit_exceeded']) {
       $message = sprintf(
         /* translators: 1: sites in use, 2: site limit of the plan. */
-        __('This site is outside your MotionKit plan\'s site limit (%1$d of %2$d used). Free a slot or upgrade to keep using premium features here.', 'motionkit-connector'),
+        __('This site is outside your MotionKit plan\'s site limit (%1$d of %2$d used). Free a slot or upgrade to keep using premium features here.', 'motionkit-with-gsap'),
         $state['sites_used'],
         $state['sites_limit']
       );
     } elseif ('expired' === $state['status']) {
-      $message = __('Your MotionKit license has expired. Renew it to keep using premium features.', 'motionkit-connector');
+      $message = __('Your MotionKit license has expired. Renew it to keep using premium features.', 'motionkit-with-gsap');
     } elseif ('disabled' === $state['status']) {
-      $message = __('Your MotionKit license has been disabled. Please contact support.', 'motionkit-connector');
+      $message = __('Your MotionKit license has been disabled. Please contact support.', 'motionkit-with-gsap');
     } elseif ('inactive' === $state['status']) {
-      $message = __('Your MotionKit license is not activated on this site yet. Reconnect the site, or activate it from your MotionKit account, to unlock premium features here.', 'motionkit-connector');
+      $message = __('Your MotionKit license is not activated on this site yet. Reconnect the site, or activate it from your MotionKit account, to unlock premium features here.', 'motionkit-with-gsap');
     } else {
-      $message = __('The connected MotionKit account has no active license. Premium features are unavailable on this site.', 'motionkit-connector');
+      $message = __('The connected MotionKit account has no active license. Premium features are unavailable on this site.', 'motionkit-with-gsap');
     }
     ?>
     <div class="notice notice-warning">
       <p>
-        <strong><?php esc_html_e('MotionKit:', 'motionkit-connector'); ?></strong>
+        <strong><?php esc_html_e('MotionKit:', 'motionkit-with-gsap'); ?></strong>
         <?php echo esc_html($message); ?>
         <a href="<?php echo esc_url(admin_url('admin.php?page=motionkit-connect&tab=connect')); ?>">
-          <?php esc_html_e('View license', 'motionkit-connector'); ?>
+          <?php esc_html_e('View license', 'motionkit-with-gsap'); ?>
         </a>
       </p>
     </div>

@@ -94,32 +94,32 @@ final class LicenseKeyField
         if ($manual !== '') {
             printf(
                 /* translators: %s: last four characters of the saved license key. */
-                '<p>' . esc_html__('Updates are enabled with the license key ending in %s.', 'motionkit-connector') . ' ',
+                '<p>' . esc_html__('Updates are enabled with the license key ending in %s.', 'motionkit-with-gsap') . ' ',
                 '<code>' . esc_html(substr($manual, -4)) . '</code>'
             );
-            submit_button(__('Remove key', 'motionkit-connector'), 'link-delete small', 'motionkit_remove_key', false);
+            submit_button(__('Remove key', 'motionkit-with-gsap'), 'link-delete small', 'motionkit_remove_key', false);
             echo '</p></form></div></td></tr>';
             return;
         }
 
         // Collapsed by default: connecting the site is the normal way to enable updates, and the field is only the fallback for when that did not provide a key.
-        printf('<details><summary style="cursor:pointer;margin:8px 0;">%s</summary>', esc_html__('Updates are not enabled yet. Enter your license key', 'motionkit-connector'));
+        printf('<details><summary style="cursor:pointer;margin:8px 0;">%s</summary>', esc_html__('Updates are not enabled yet. Enter your license key', 'motionkit-with-gsap'));
         echo '<p style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">';
         printf(
             // type=text rather than password so browsers do not offer saved logins for it; min-height pins it to the small button.
             '<input type="text" id="motionkit-connector-license-key" name="license_key" class="regular-text code" autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true" aria-label="%1$s" placeholder="%2$s" style="min-height:26px;height:26px;padding:0 8px;">',
-            esc_attr__('License key', 'motionkit-connector'),
-            esc_attr__('Paste your MotionKit license key', 'motionkit-connector')
+            esc_attr__('License key', 'motionkit-with-gsap'),
+            esc_attr__('Paste your MotionKit license key', 'motionkit-with-gsap')
         );
-        submit_button(__('Save key', 'motionkit-connector'), 'secondary small', 'motionkit_save_key', false);
-        printf('<span class="description">%s</span>', esc_html__('Find it in your MotionKit account under Licenses.', 'motionkit-connector'));
+        submit_button(__('Save key', 'motionkit-with-gsap'), 'secondary small', 'motionkit_save_key', false);
+        printf('<span class="description">%s</span>', esc_html__('Find it in your MotionKit account under Licenses.', 'motionkit-with-gsap'));
         echo '</p></details></form></div></td></tr>';
     }
 
     public function handle_save(): void
     {
         if (!current_user_can('update_plugins')) {
-            wp_die(esc_html__('You do not have permission to perform this action.', 'motionkit-connector'));
+            wp_die(esc_html__('You do not have permission to perform this action.', 'motionkit-with-gsap'));
         }
 
         check_admin_referer(self::SAVE_ACTION);
@@ -161,15 +161,15 @@ final class LicenseKeyField
         }
 
         $messages = [
-            'valid'               => ['success', __('License key saved. MotionKit Connector updates are enabled on this site.', 'motionkit-connector')],
-            'removed'             => ['success', __('License key removed.', 'motionkit-connector')],
-            'expired'             => ['error', __('This license key has expired. Renew it in your MotionKit account to receive updates.', 'motionkit-connector')],
-            'disabled'            => ['error', __('This license key has been disabled. Please contact MotionKit support.', 'motionkit-connector')],
-            'revoked'             => ['error', __('This license key has been revoked. Please contact MotionKit support.', 'motionkit-connector')],
-            'no_activations_left' => ['error', __('This license key has no site activations left. Free one in your MotionKit account, then try again.', 'motionkit-connector')],
-            'item_mismatch'       => ['error', __('This key is not a MotionKit license key.', 'motionkit-connector')],
-            'invalid'             => ['error', __('That license key is not valid. Check it and try again.', 'motionkit-connector')],
-            'error'               => ['error', __('Could not reach the MotionKit license server. Please try again in a few minutes.', 'motionkit-connector')],
+            'valid'               => ['success', __('License key saved. MotionKit Connector updates are enabled on this site.', 'motionkit-with-gsap')],
+            'removed'             => ['success', __('License key removed.', 'motionkit-with-gsap')],
+            'expired'             => ['error', __('This license key has expired. Renew it in your MotionKit account to receive updates.', 'motionkit-with-gsap')],
+            'disabled'            => ['error', __('This license key has been disabled. Please contact MotionKit support.', 'motionkit-with-gsap')],
+            'revoked'             => ['error', __('This license key has been revoked. Please contact MotionKit support.', 'motionkit-with-gsap')],
+            'no_activations_left' => ['error', __('This license key has no site activations left. Free one in your MotionKit account, then try again.', 'motionkit-with-gsap')],
+            'item_mismatch'       => ['error', __('This key is not a MotionKit license key.', 'motionkit-with-gsap')],
+            'invalid'             => ['error', __('That license key is not valid. Check it and try again.', 'motionkit-with-gsap')],
+            'error'               => ['error', __('Could not reach the MotionKit license server. Please try again in a few minutes.', 'motionkit-with-gsap')],
         ];
 
         [$type, $message] = $messages[$result];

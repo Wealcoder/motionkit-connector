@@ -169,7 +169,7 @@ final class DependencyInstaller
     public function handle_manual_restore(): void
     {
         if (!current_user_can('install_plugins') || !current_user_can('activate_plugins')) {
-            wp_die(esc_html__('You do not have permission to do this.', 'motionkit-connector'));
+            wp_die(esc_html__('You do not have permission to do this.', 'motionkit-with-gsap'));
         }
         check_admin_referer(self::RESTORE_ACTION);
 
@@ -205,7 +205,7 @@ final class DependencyInstaller
     public function handle_dismiss_restore(): void
     {
         if (!current_user_can('install_plugins')) {
-            wp_die(esc_html__('You do not have permission to do this.', 'motionkit-connector'));
+            wp_die(esc_html__('You do not have permission to do this.', 'motionkit-with-gsap'));
         }
         check_admin_referer(self::DISMISS_ACTION);
 
@@ -256,7 +256,7 @@ final class DependencyInstaller
                 'wporg_lookup_failed',
                 sprintf(
                     /* translators: %s: the wordpress.org lookup error message. */
-                    __('WordPress.org lookup for MotionKit failed: %s', 'motionkit-connector'),
+                    __('WordPress.org lookup for MotionKit failed: %s', 'motionkit-with-gsap'),
                     $api->get_error_message()
                 )
             );
@@ -265,7 +265,7 @@ final class DependencyInstaller
         if (empty($api->download_link)) {
             return new \WP_Error(
                 'no_download_link',
-                __('WordPress.org did not return a download link for MotionKit.', 'motionkit-connector')
+                __('WordPress.org did not return a download link for MotionKit.', 'motionkit-with-gsap')
             );
         }
 
@@ -284,7 +284,7 @@ final class DependencyInstaller
                 'install_failed',
                 $detail !== ''
                     ? $detail
-                    : __('The MotionKit plugin could not be installed from WordPress.org.', 'motionkit-connector')
+                    : __('The MotionKit plugin could not be installed from WordPress.org.', 'motionkit-with-gsap')
             );
         }
 
@@ -307,7 +307,7 @@ final class DependencyInstaller
         if ($basename === '') {
             return new \WP_Error(
                 'main_not_found',
-                __('MotionKit was installed but its plugin file could not be located.', 'motionkit-connector')
+                __('MotionKit was installed but its plugin file could not be located.', 'motionkit-with-gsap')
             );
         }
 
@@ -420,16 +420,16 @@ final class DependencyInstaller
 
         $is_installed = $this->is_main_installed();
         $button_label = $is_installed
-            ? __('Activate MotionKit', 'motionkit-connector')
-            : __('Install & Activate MotionKit', 'motionkit-connector');
+            ? __('Activate MotionKit', 'motionkit-with-gsap')
+            : __('Install & Activate MotionKit', 'motionkit-with-gsap');
 
         if ($error !== false) {
             delete_transient(self::ERROR_TRANSIENT);
             ?>
             <div class="notice notice-error is-dismissible">
                 <p>
-                    <strong><?php esc_html_e('MotionKit Connector:', 'motionkit-connector'); ?></strong>
-                    <?php esc_html_e('Failed to set up the MotionKit core plugin.', 'motionkit-connector'); ?>
+                    <strong><?php esc_html_e('MotionKit Connector:', 'motionkit-with-gsap'); ?></strong>
+                    <?php esc_html_e('Failed to set up the MotionKit core plugin.', 'motionkit-with-gsap'); ?>
                     <?php echo esc_html($error); ?>
                 </p>
                 <p>
@@ -449,12 +449,12 @@ final class DependencyInstaller
         ?>
         <div class="notice notice-warning">
             <p>
-                <strong><?php esc_html_e('MotionKit Connector:', 'motionkit-connector'); ?></strong>
+                <strong><?php esc_html_e('MotionKit Connector:', 'motionkit-with-gsap'); ?></strong>
                 <?php
                 if ($is_installed) {
-                    esc_html_e('The MotionKit core plugin is installed but inactive. The connector requires the core plugin for admin settings and animations.', 'motionkit-connector');
+                    esc_html_e('The MotionKit core plugin is installed but inactive. The connector requires the core plugin for admin settings and animations.', 'motionkit-with-gsap');
                 } else {
-                    esc_html_e('MotionKit Connector requires the MotionKit core plugin to be installed and active.', 'motionkit-connector');
+                    esc_html_e('MotionKit Connector requires the MotionKit core plugin to be installed and active.', 'motionkit-with-gsap');
                 }
                 ?>
             </p>
@@ -463,7 +463,7 @@ final class DependencyInstaller
                     <?php echo esc_html($button_label); ?>
                 </a>
                 <a href="<?php echo esc_url($dismiss_url); ?>" class="button button-link" style="margin-left:8px;">
-                    <?php esc_html_e('Dismiss', 'motionkit-connector'); ?>
+                    <?php esc_html_e('Dismiss', 'motionkit-with-gsap'); ?>
                 </a>
             </p>
         </div>

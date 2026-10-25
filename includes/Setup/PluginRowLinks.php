@@ -98,7 +98,7 @@ final class PluginRowLinks
             $custom['settings'] = sprintf(
                 '<a href="%s">%s</a>',
                 esc_url(admin_url('admin.php?page=motionkit-connect')),
-                esc_html__('Settings', 'motionkit-connector')
+                esc_html__('Settings', 'motionkit-with-gsap')
             );
         }
 
@@ -106,14 +106,14 @@ final class PluginRowLinks
         $custom['editor'] = sprintf(
             '<a href="%s" target="_blank" rel="noopener">%s</a>',
             esc_url($this->editor_url()),
-            esc_html__('Editor', 'motionkit-connector')
+            esc_html__('Editor', 'motionkit-with-gsap')
         );
 
         // Docs → documentation (new tab).
         $custom['docs'] = sprintf(
             '<a href="%s" target="_blank" rel="noopener">%s</a>',
             esc_url($this->docs_url()),
-            esc_html__('Docs', 'motionkit-connector')
+            esc_html__('Docs', 'motionkit-with-gsap')
         );
 
         // Prepend ours so Deactivate stays last.
@@ -143,13 +143,13 @@ final class PluginRowLinks
         $meta[] = sprintf(
             '<a href="%s" target="_blank" rel="noopener">%s</a>',
             esc_url($this->site_url()),
-            esc_html__('Visit site', 'motionkit-connector')
+            esc_html__('Visit site', 'motionkit-with-gsap')
         );
 
         $meta[] = sprintf(
             '<a href="%s" target="_blank" rel="noopener">%s</a>',
             esc_url($this->docs_url()),
-            esc_html__('Docs', 'motionkit-connector')
+            esc_html__('Docs', 'motionkit-with-gsap')
         );
 
         return $meta;
@@ -165,7 +165,7 @@ final class PluginRowLinks
     {
         return $this->add_deactivate_confirm(
             $links,
-            __('Deactivating the MotionKit Connector stops the animation engine — your animations, page transitions, and smooth scroll will no longer run on the live site. Deactivate anyway?', 'motionkit-connector')
+            __('Deactivating the MotionKit Connector stops the animation engine — your animations, page transitions, and smooth scroll will no longer run on the live site. Deactivate anyway?', 'motionkit-with-gsap')
         );
     }
 
@@ -181,7 +181,7 @@ final class PluginRowLinks
     {
         return $this->add_deactivate_confirm(
             $links,
-            __('MotionKit powers the connect flow, editor launch, and license status for the MotionKit Connector. Deactivating it leaves the connector running without its admin controls. Deactivate anyway?', 'motionkit-connector')
+            __('MotionKit powers the connect flow, editor launch, and license status for the MotionKit Connector. Deactivating it leaves the connector running without its admin controls. Deactivate anyway?', 'motionkit-with-gsap')
         );
     }
 

@@ -97,7 +97,7 @@ final class PluginUpdater
         $meta[] = sprintf(
             '<a href="%s">%s</a>',
             esc_url(wp_nonce_url(admin_url('admin-post.php?action=' . self::CHECK_ACTION), self::CHECK_ACTION)),
-            esc_html__('Check for updates', 'motionkit-connector')
+            esc_html__('Check for updates', 'motionkit-with-gsap')
         );
 
         return $meta;
@@ -106,7 +106,7 @@ final class PluginUpdater
     public function handle_manual_check(): void
     {
         if (!current_user_can('update_plugins')) {
-            wp_die(esc_html__('You do not have permission to perform this action.', 'motionkit-connector'));
+            wp_die(esc_html__('You do not have permission to perform this action.', 'motionkit-with-gsap'));
         }
 
         check_admin_referer(self::CHECK_ACTION);
@@ -154,14 +154,14 @@ final class PluginUpdater
 
         // The key field is only mentioned when the row below actually shows it; otherwise connecting is the one thing to do.
         $no_license = LicenseKeyField::is_offered()
-            ? __('MotionKit Connector updates are not enabled on this site yet. Connect it to your licensed MotionKit account, or enter your license key under MotionKit Connector below, then check again.', 'motionkit-connector')
-            : __('MotionKit Connector updates are not enabled on this site yet. Connect it to your licensed MotionKit account, then check again.', 'motionkit-connector');
+            ? __('MotionKit Connector updates are not enabled on this site yet. Connect it to your licensed MotionKit account, or enter your license key under MotionKit Connector below, then check again.', 'motionkit-with-gsap')
+            : __('MotionKit Connector updates are not enabled on this site yet. Connect it to your licensed MotionKit account, then check again.', 'motionkit-with-gsap');
 
         $messages = [
-            'available'  => ['success', __('A new version of MotionKit Connector is available. Use "update now" in its row below.', 'motionkit-connector')],
-            'current'    => ['success', __('MotionKit Connector is up to date.', 'motionkit-connector')],
+            'available'  => ['success', __('A new version of MotionKit Connector is available. Use "update now" in its row below.', 'motionkit-with-gsap')],
+            'current'    => ['success', __('MotionKit Connector is up to date.', 'motionkit-with-gsap')],
             'no_license' => ['warning', $no_license],
-            'error'      => ['error', __('Could not reach the MotionKit update server. Please try again in a few minutes.', 'motionkit-connector')],
+            'error'      => ['error', __('Could not reach the MotionKit update server. Please try again in a few minutes.', 'motionkit-with-gsap')],
         ];
 
         [$type, $message] = $messages[$result];

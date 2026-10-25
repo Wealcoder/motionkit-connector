@@ -158,7 +158,7 @@ final class RestApi
 
       return new \WP_Error(
         'rest_forbidden',
-        esc_html__('Invalid or expired token.', 'motionkit-connector'),
+        esc_html__('Invalid or expired token.', 'motionkit-with-gsap'),
         ['status' => 401]
       );
     }
@@ -178,7 +178,7 @@ final class RestApi
 
     return new \WP_Error(
       'rest_forbidden',
-      esc_html__('Authentication required.', 'motionkit-connector'),
+      esc_html__('Authentication required.', 'motionkit-with-gsap'),
       ['status' => 401]
     );
   }

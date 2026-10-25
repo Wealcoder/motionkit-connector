@@ -21,6 +21,13 @@ Works together with the free MotionKit plugin from WordPress.org, which connects
 
 == Changelog ==
 
+= 1.7.2 =
+* Tweak: The license key field appears only on sites that have used MotionKit for a month without a key.
+* Improve: The editor's page list shows how many animations each page has.
+* Improve: View details shows the bundled description, changelog and icon when the store has none.
+* Fix: The Plugins row shows one Visit site link instead of two.
+* Update: The animation engine is rebuilt from the latest MotionKit editor.
+
 = 1.7.1 =
 * Update: The animation engine is rebuilt from the latest MotionKit editor.
 

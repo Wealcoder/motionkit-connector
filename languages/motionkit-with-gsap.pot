@@ -1,0 +1,278 @@
+# Copyright (C) 2026 Wealcoder
+# This file is distributed under the Proprietary — see LICENSE.txt.
+msgid ""
+msgstr ""
+"Project-Id-Version: MotionKit With Gsap 1.7.2\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/motionkit-with-gsap\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-10-25T06:36:41+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: motionkit-with-gsap\n"
+
+#. Plugin Name of the plugin
+#: motionkit-with-gsap.php
+msgid "MotionKit With Gsap"
+msgstr ""
+
+#. Plugin URI of the plugin
+#. Author URI of the plugin
+#: motionkit-with-gsap.php
+msgid "https://motionkit.io"
+msgstr ""
+
+#. Description of the plugin
+#: motionkit-with-gsap.php
+msgid "MotionKit with gsap — Animation Engine, GSAP Enqueue, ScrollSmoother, Page Transition, and Preloader Engine for MotionKit."
+msgstr ""
+
+#. Author of the plugin
+#: motionkit-with-gsap.php
+msgid "Wealcoder"
+msgstr ""
+
+#: includes/Auth/LicenseStatus.php:151
+msgid "This site is not connected to MotionKit."
+msgstr ""
+
+#: includes/Auth/LicenseStatus.php:155
+msgid "A license check is already in progress."
+msgstr ""
+
+#: includes/Auth/LicenseStatus.php:161
+msgid "No access token stored locally."
+msgstr ""
+
+#: includes/Auth/LicenseStatus.php:194
+msgid "This site has not launched the MotionKit editor yet, so there is no license to check."
+msgstr ""
+
+#. translators: %d: HTTP status code returned by the MotionKit server.
+#: includes/Auth/LicenseStatus.php:203
+#, php-format
+msgid "Unexpected response from the MotionKit server (HTTP %d)."
+msgstr ""
+
+#: includes/Auth/LicenseStatus.php:290
+#: includes/Setup/LicenseKeyField.php:122
+#: includes/Setup/PluginUpdater.php:109
+msgid "You do not have permission to perform this action."
+msgstr ""
+
+#: includes/Auth/LicenseStatus.php:470
+#: includes/Auth/LicenseStatus.php:508
+msgid "MotionKit:"
+msgstr ""
+
+#: includes/Auth/LicenseStatus.php:471
+msgid "This site's connection needs refreshing. Your license is active, but the local connection token is out of date — reconnect this site to restore full verification."
+msgstr ""
+
+#: includes/Auth/LicenseStatus.php:472
+msgid "Reconnect this site"
+msgstr ""
+
+#. translators: 1: sites in use, 2: site limit of the plan.
+#: includes/Auth/LicenseStatus.php:492
+#, php-format
+msgid "This site is outside your MotionKit plan's site limit (%1$d of %2$d used). Free a slot or upgrade to keep using premium features here."
+msgstr ""
+
+#: includes/Auth/LicenseStatus.php:497
+msgid "Your MotionKit license has expired. Renew it to keep using premium features."
+msgstr ""
+
+#: includes/Auth/LicenseStatus.php:499
+msgid "Your MotionKit license has been disabled. Please contact support."
+msgstr ""
+
+#: includes/Auth/LicenseStatus.php:501
+msgid "Your MotionKit license is not activated on this site yet. Reconnect the site, or activate it from your MotionKit account, to unlock premium features here."
+msgstr ""
+
+#: includes/Auth/LicenseStatus.php:503
+msgid "The connected MotionKit account has no active license. Premium features are unavailable on this site."
+msgstr ""
+
+#: includes/Auth/LicenseStatus.php:511
+msgid "View license"
+msgstr ""
+
+#: includes/RestApi/RestApi.php:161
+msgid "Invalid or expired token."
+msgstr ""
+
+#: includes/RestApi/RestApi.php:181
+msgid "Authentication required."
+msgstr ""
+
+#: includes/Setup/DependencyInstaller.php:172
+#: includes/Setup/DependencyInstaller.php:208
+msgid "You do not have permission to do this."
+msgstr ""
+
+#. translators: %s: the wordpress.org lookup error message.
+#: includes/Setup/DependencyInstaller.php:259
+#, php-format
+msgid "WordPress.org lookup for MotionKit failed: %s"
+msgstr ""
+
+#: includes/Setup/DependencyInstaller.php:268
+msgid "WordPress.org did not return a download link for MotionKit."
+msgstr ""
+
+#: includes/Setup/DependencyInstaller.php:287
+msgid "The MotionKit plugin could not be installed from WordPress.org."
+msgstr ""
+
+#: includes/Setup/DependencyInstaller.php:310
+msgid "MotionKit was installed but its plugin file could not be located."
+msgstr ""
+
+#: includes/Setup/DependencyInstaller.php:423
+msgid "Activate MotionKit"
+msgstr ""
+
+#: includes/Setup/DependencyInstaller.php:424
+msgid "Install & Activate MotionKit"
+msgstr ""
+
+#: includes/Setup/DependencyInstaller.php:431
+#: includes/Setup/DependencyInstaller.php:452
+msgid "MotionKit Connector:"
+msgstr ""
+
+#: includes/Setup/DependencyInstaller.php:432
+msgid "Failed to set up the MotionKit core plugin."
+msgstr ""
+
+#: includes/Setup/DependencyInstaller.php:455
+msgid "The MotionKit core plugin is installed but inactive. The connector requires the core plugin for admin settings and animations."
+msgstr ""
+
+#: includes/Setup/DependencyInstaller.php:457
+msgid "MotionKit Connector requires the MotionKit core plugin to be installed and active."
+msgstr ""
+
+#: includes/Setup/DependencyInstaller.php:466
+msgid "Dismiss"
+msgstr ""
+
+#. translators: %s: last four characters of the saved license key.
+#: includes/Setup/LicenseKeyField.php:97
+#, php-format
+msgid "Updates are enabled with the license key ending in %s."
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:100
+msgid "Remove key"
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:106
+msgid "Updates are not enabled yet. Enter your license key"
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:111
+msgid "License key"
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:112
+msgid "Paste your MotionKit license key"
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:114
+msgid "Save key"
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:115
+msgid "Find it in your MotionKit account under Licenses."
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:164
+msgid "License key saved. MotionKit Connector updates are enabled on this site."
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:165
+msgid "License key removed."
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:166
+msgid "This license key has expired. Renew it in your MotionKit account to receive updates."
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:167
+msgid "This license key has been disabled. Please contact MotionKit support."
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:168
+msgid "This license key has been revoked. Please contact MotionKit support."
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:169
+msgid "This license key has no site activations left. Free one in your MotionKit account, then try again."
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:170
+msgid "This key is not a MotionKit license key."
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:171
+msgid "That license key is not valid. Check it and try again."
+msgstr ""
+
+#: includes/Setup/LicenseKeyField.php:172
+msgid "Could not reach the MotionKit license server. Please try again in a few minutes."
+msgstr ""
+
+#: includes/Setup/PluginRowLinks.php:101
+msgid "Settings"
+msgstr ""
+
+#: includes/Setup/PluginRowLinks.php:109
+msgid "Editor"
+msgstr ""
+
+#: includes/Setup/PluginRowLinks.php:116
+#: includes/Setup/PluginRowLinks.php:152
+msgid "Docs"
+msgstr ""
+
+#: includes/Setup/PluginRowLinks.php:146
+msgid "Visit site"
+msgstr ""
+
+#: includes/Setup/PluginRowLinks.php:168
+msgid "Deactivating the MotionKit Connector stops the animation engine — your animations, page transitions, and smooth scroll will no longer run on the live site. Deactivate anyway?"
+msgstr ""
+
+#: includes/Setup/PluginRowLinks.php:184
+msgid "MotionKit powers the connect flow, editor launch, and license status for the MotionKit Connector. Deactivating it leaves the connector running without its admin controls. Deactivate anyway?"
+msgstr ""
+
+#: includes/Setup/PluginUpdater.php:100
+msgid "Check for updates"
+msgstr ""
+
+#: includes/Setup/PluginUpdater.php:157
+msgid "MotionKit Connector updates are not enabled on this site yet. Connect it to your licensed MotionKit account, or enter your license key under MotionKit Connector below, then check again."
+msgstr ""
+
+#: includes/Setup/PluginUpdater.php:158
+msgid "MotionKit Connector updates are not enabled on this site yet. Connect it to your licensed MotionKit account, then check again."
+msgstr ""
+
+#: includes/Setup/PluginUpdater.php:161
+msgid "A new version of MotionKit Connector is available. Use \"update now\" in its row below."
+msgstr ""
+
+#: includes/Setup/PluginUpdater.php:162
+msgid "MotionKit Connector is up to date."
+msgstr ""
+
+#: includes/Setup/PluginUpdater.php:164
+msgid "Could not reach the MotionKit update server. Please try again in a few minutes."
+msgstr ""

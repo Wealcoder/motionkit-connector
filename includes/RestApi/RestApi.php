@@ -564,6 +564,8 @@ final class RestApi
 
     if ($search) {
       $query_args['s'] = $search;
+      // Title only: WordPress searches the excerpt and the content too, so any page whose body mentions the words matched — "animation test" listed Home and Service. The list is found by name.
+      $query_args['search_columns'] = ['post_title'];
     }
 
     $query = new \WP_Query($query_args);

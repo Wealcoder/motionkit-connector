@@ -11,6 +11,8 @@ declare(strict_types=1);
 
 namespace MotionKitConnector\Frontend;
 
+use MotionKitConnector\Auth\LicenseStatus;
+
 defined('ABSPATH') || exit;
 
 /**
@@ -23,6 +25,12 @@ defined('ABSPATH') || exit;
  */
 final class PageTransition
 {
+  // Page transition is a premium feature, and the editor's lock runs in the editor's browser, where it can be stepped around, so the site decides as well. Every reader asks here — the early cover, the view-transition opt-in and the engine enqueue in Frontend — so they can never disagree about whether a transition runs; a cover painted for an engine that was not enqueued would leave the page covered until the timer net.
+  public static function allowed_by_plan(): bool
+  {
+    return LicenseStatus::allows_premium();
+  }
+
   /**
    * Check if page transition is enabled globally
    */
@@ -39,7 +47,7 @@ final class PageTransition
     }
 
     // Strictly `true`, because pageTransitionEngine/config.js is strict. A looser gate here than in the engine means the cover is painted for a transition that will never run, and there is no timer behind this one to undo it.
-    return is_array($pt) && ($pt['enable'] ?? null) === true;
+    return is_array($pt) && ($pt['enable'] ?? null) === true && self::allowed_by_plan();
   }
 
   /**
@@ -58,7 +66,7 @@ final class PageTransition
     }
 
     // See is_enabled(): the same strict comparison, for the same reason.
-    if (!is_array($pt) || ($pt['enable'] ?? null) !== true) {
+    if (!is_array($pt) || ($pt['enable'] ?? null) !== true || !self::allowed_by_plan()) {
       return null;
     }
 

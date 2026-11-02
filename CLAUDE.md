@@ -164,7 +164,7 @@ fallback) in the `motionkit-editor` repo. The server never sees these names —
 |---|---|
 | `motionkit-connector.php` | Plugin header. The shipping name is **`MotionKit Connector`** — never leave a branch-build name in it. |
 | `includes/Frontend/Frontend.php` | Script loading, localized `motionkitData`, no-cache headers, hook priorities |
-| `includes/Frontend/PageTransition.php` | Early cover + its self-expiring timer |
+| `includes/Frontend/PageTransition.php` | Early cover + its self-expiring timer; `allowed_by_plan()`, the premium gate every page-transition reader asks. It reads `LicenseStatus::allows_premium()`, which is off on a disconnected site or on `plan_tier: free` from `/connect/status`. |
 | `includes/RestApi/RestApi.php` | `/save` dispatcher and `/pages` search |
 | `includes/Common/AnimationBuilderPageType.php` | Storage routing (post_meta / term_meta / option) |
 | `includes/Common/configs/animation-builder-assets.php` | Per-preset enqueue table pointing at `assets/build/presets/` |

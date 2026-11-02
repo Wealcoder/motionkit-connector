@@ -553,7 +553,7 @@ final class Frontend
     if (!is_array($transition)) {
       return null;
     }
-    if (($transition['enable'] ?? null) !== true) {
+    if (($transition['enable'] ?? null) !== true || !PageTransition::allowed_by_plan()) {
       return null;
     }
 

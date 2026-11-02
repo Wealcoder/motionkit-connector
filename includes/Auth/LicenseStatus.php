@@ -37,6 +37,9 @@ final class LicenseStatus
   private const FRESH_WINDOW = 12 * HOUR_IN_SECONDS;
   private const GRACE_WINDOW = 72 * HOUR_IN_SECONDS;
   private const KNOWN_STATUSES = ['active', 'inactive', 'expired', 'disabled', 'none', 'unknown'];
+  // The editor's plan tiers (src/configuration/limits/planGate.js in motionkit-editor), as /connect/status reports them for the site's workspace owner.
+  private const PLAN_TIERS = ['premium', 'free'];
+  private const PLAN_TIER_FREE = 'free';
 
   public function init(): void
   {
@@ -95,6 +98,16 @@ final class LicenseStatus
     }
 
     update_option(self::OPT_MANUAL_KEY, $key, false);
+  }
+
+  // Whether premium runtime features (page transition) may run here. A disconnected site may not: nobody vouches for its plan, and reconnecting brings them back. A connected site is refused only on a definite free answer; a site never checked, or checked while billing was down, keeps them, the fail-open the editor and the server use, so a paying customer is never cut off by a blip.
+  public static function allows_premium(): bool
+  {
+    if (!OAuthHandler::is_connected()) {
+      return false;
+    }
+
+    return self::PLAN_TIER_FREE !== (self::get_state()['plan_tier'] ?? '');
   }
 
   public static function is_indeterminate(): bool
@@ -358,6 +371,9 @@ final class LicenseStatus
       ? (bool) $license['exists']
       : ('none' !== $status && 'unknown' !== $status);
 
+    // Top-level, beside `license`, because it is the workspace owner's tier while `license` is the connecting account's.
+    $plan_tier = sanitize_key((string) ($body['plan_tier'] ?? ''));
+
     return [
       'exists'         => $exists,
       'status'         => $status,
@@ -367,6 +383,7 @@ final class LicenseStatus
       'sites_used'     => $sites_used,
       'limit_exceeded' => $limit_exceeded,
       'features'       => $features,
+      'plan_tier'      => in_array($plan_tier, self::PLAN_TIERS, true) ? $plan_tier : '',
       'checked_at'     => time(),
       'stale'          => false,
       'token_stale'    => false,
@@ -387,6 +404,12 @@ final class LicenseStatus
 
   private static function store(array $state): void
   {
+    // Only a check that carried a tier changes it. A billing outage, a server that predates the field, a 404 or a revoked token says nothing about the plan, so the last tier stands until the server answers again; clear() drops it, on disconnect.
+    if (empty($state['plan_tier'])) {
+      $previous = get_option(self::OPT_STATE);
+      $state['plan_tier'] = is_array($previous) ? (string) ($previous['plan_tier'] ?? '') : '';
+    }
+
     update_option(self::OPT_STATE, $state, false);
     set_transient(self::TRANSIENT_FRESH, 1, self::FRESH_WINDOW);
   }
@@ -424,6 +447,7 @@ final class LicenseStatus
       'sites_used'     => 0,
       'limit_exceeded' => false,
       'features'       => [],
+      'plan_tier'      => '',
       'checked_at'     => 0,
       'stale'          => false,
     ];

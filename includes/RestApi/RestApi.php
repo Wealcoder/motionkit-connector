@@ -27,6 +27,7 @@ use MotionKitConnector\Common\AnimationResolver;
 use MotionKitConnector\Common\MotionkitBuilderPageType;
 use MotionKitConnector\Common\ShareLinks;
 use MotionKitConnector\Auth\JwtTokenManager;
+use MotionKitConnector\Auth\OAuthHandler;
 use MotionKitConnector\Migrations\StatusSavedMigration;
 use MotionKitConnector\Support\EditorSessionTrait;
 
@@ -234,6 +235,11 @@ final class RestApi
 
     if ($token === '' || $action === '') {
       return new \WP_REST_Response(['success' => false, 'error' => 'missing_token_or_action'], 400);
+    }
+
+    // A site disconnected from MotionKit takes no editor writes, whatever token arrives: the plugin mints launch tokens for itself either way, and the server's answer can lag a disconnect, so this install's own state decides. Checked before the token, so a disconnected site makes no outbound verification call either. The editor shows its "connected to another account" card on this code.
+    if (!OAuthHandler::is_connected()) {
+      return new \WP_REST_Response(['success' => false, 'error' => 'site_disconnected'], 401);
     }
 
     if (JwtTokenManager::validate_reusable($token) === false) {

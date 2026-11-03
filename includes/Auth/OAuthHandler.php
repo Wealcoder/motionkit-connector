@@ -36,6 +36,8 @@ final class OAuthHandler
   {
     // These are the connector's own launch-token secrets; the free plugin's disconnect announces itself with this action rather than knowing about them.
     add_action('motionkit/oauth/disconnected', [__CLASS__, 'forget_session_secrets']);
+    // A connect over an existing connection (another account taking the site, or a reconnect) belongs to a new site row, so the old row's secret must not keep validating the editor sessions it signed: without this, a launch token the previous account still held kept saving to a site that was no longer theirs.
+    add_action('motionkit/oauth/connected', [__CLASS__, 'forget_session_secrets']);
   }
 
   /**
